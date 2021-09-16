@@ -1,9 +1,11 @@
 use std::collections::HashMap;
 use std::error::Error;
 use std::fs;
-use std::io::{self, BufRead, ErrorKind, Write};
+use std::io::{self, BufRead, BufReader, ErrorKind, Read, Write};
+use std::net::{TcpListener, TcpStream};
 use std::path::Path;
 use std::str::FromStr;
+use std::thread;
 
 use serde_json::json;
 
@@ -80,39 +82,57 @@ impl UserInput {
     }
 }
 
-fn receive_input() {}
+fn parse_stream_input(stream: &mut TcpStream, input_num: &mut i32) -> io::Result<UserInput> {
+    let msg = format!("[{}] ", input_num);
+    stream.write(msg.as_bytes())?;
 
-fn parse_input(input_num: &mut i32, input: &mut String) -> io::Result<UserInput> {
-    print!("[{}] ", input_num);
-    io::stdout().flush()?;
-    io::stdin().lock().read_line(input)?;
-    let user_input = UserInput::new(input.to_string());
+    let mut reader = BufReader::new(stream);
+    let mut line = String::new();
+    let bytes_read = reader.read_line(&mut line)?;
+    println!("Read {} bytes", bytes_read);
+
+    let user_input = UserInput::new(line);
     if !user_input.is_valid {
         println!("Invalid input\n")
     }
     Ok(user_input)
 }
 
-fn get_input(input: UserInput, store: &mut HashMap<String, String>) -> io::Result<()> {
+fn get_input(
+    stream: &mut TcpStream,
+    input: UserInput,
+    store: &mut HashMap<String, String>,
+) -> io::Result<()> {
     if let Some(key) = input.value {
+        println!("Getting key={}", key);
         let value = store.get(&key);
         if let Some(v) = value {
-            println!("{}", v);
+            let msg = format!("{}\n", v);
+            stream.write(msg.as_bytes())?;
         };
     } else {
-        println!("{:?}", store)
+        println!("Getting store");
+        let msg = format!("{}\n", json!(store).to_string());
+        stream.write(msg.as_bytes())?;
     }
     Ok(())
 }
 
-fn store_input(input: UserInput, store: &mut HashMap<String, String>) -> io::Result<()> {
+fn store_stream_input(
+    stream: &mut TcpStream,
+    input: UserInput,
+    store: &mut HashMap<String, String>,
+) -> io::Result<()> {
     let set_value = input.value.expect("No set value provided");
+
     let tokens: Vec<&str> = set_value.split("=").collect();
 
     if tokens.len() == 2 {
         let key = tokens[0];
         let value = tokens[1].trim();
         store.insert(key.to_string(), value.to_string());
+        let msg = format!("Succesfully wrote key={}\n", key);
+        stream.write(msg.as_bytes())?;
         return Ok(());
     }
     Err(io::Error::new(
@@ -127,8 +147,11 @@ fn persist_store(store: &mut HashMap<String, String>, path: &Path) -> io::Result
     Ok(())
 }
 
-fn main() -> Result<(), Box<dyn Error>> {
+fn handle_connection(mut stream: TcpStream) -> io::Result<()> {
     let mut input_num: i32 = 1;
+    let welcome = "Welcome to Blue!\n";
+    stream.write(welcome.as_bytes())?;
+
     let store_path = Path::new("data.json");
 
     let mut store: HashMap<String, String> = match store_path.exists() {
@@ -140,16 +163,29 @@ fn main() -> Result<(), Box<dyn Error>> {
     };
 
     loop {
-        let mut input = String::new();
-        let input = parse_input(&mut input_num, &mut input)?;
+        // let mut input = String::new();
+        let input = parse_stream_input(&mut stream, &mut input_num)?;
         match input.command {
-            Some(Command::Get) => get_input(input, &mut store)?,
+            Some(Command::Get) => get_input(&mut stream, input, &mut store)?,
             Some(Command::Set) => {
-                store_input(input, &mut store)?;
+                store_stream_input(&mut stream, input, &mut store)?;
                 persist_store(&mut store, store_path)?;
             }
             None => println!("Figure this out"),
         }
         input_num += 1;
     }
+}
+
+fn main() -> Result<(), Box<dyn Error>> {
+    let listener = TcpListener::bind("127.0.0.1:7878")?;
+
+    for stream in listener.incoming() {
+        let stream = stream.unwrap();
+
+        thread::spawn(|| {
+            handle_connection(stream);
+        });
+    }
+    Ok(())
 }
