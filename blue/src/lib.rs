@@ -149,35 +149,36 @@ fn persist_store(store: &mut HashMap<String, String>, path: &Path) -> io::Result
     Ok(())
 }
 
-pub fn handle_connection(mut stream: TcpStream) -> io::Result<()> {
-    println!("Connection established with: {}", stream.peer_addr()?);
-    let mut input_num: i32 = 1;
-    let welcome = "Welcome to Blue!\n";
-    stream.write(welcome.as_bytes())?;
+// NOTE: Old handler pre multi threading
+// pub fn handle_connection(mut stream: TcpStream) -> io::Result<()> {
+//     println!("Connection established with: {}", stream.peer_addr()?);
+//     let mut input_num: i32 = 1;
+//     let welcome = "Welcome to Blue!\n";
+//     stream.write(welcome.as_bytes())?;
 
-    let store_path = Path::new("data.json");
+//     let store_path = Path::new("data.json");
 
-    let mut store: HashMap<String, String> = match store_path.exists() {
-        true => {
-            let existing_store = fs::read_to_string(&store_path)?;
-            serde_json::from_str(&existing_store)?
-        }
-        false => HashMap::new(),
-    };
+//     let mut store: HashMap<String, String> = match store_path.exists() {
+//         true => {
+//             let existing_store = fs::read_to_string(&store_path)?;
+//             serde_json::from_str(&existing_store)?
+//         }
+//         false => HashMap::new(),
+//     };
 
-    loop {
-        let input = parse_stream_input(&mut stream, &mut input_num)?;
-        match input.command {
-            Some(Command::Get) => get_stream_input(&mut stream, input, &mut store)?,
-            Some(Command::Set) => {
-                store_stream_input(&mut stream, input, &mut store)?;
-                persist_store(&mut store, store_path)?;
-            }
-            None => println!("Figure this out"),
-        }
-        input_num += 1;
-    }
-}
+//     loop {
+//         let input = parse_stream_input(&mut stream, &mut input_num)?;
+//         match input.command {
+//             Some(Command::Get) => get_stream_input(&mut stream, input, &mut store)?,
+//             Some(Command::Set) => {
+//                 store_stream_input(&mut stream, input, &mut store)?;
+//                 persist_store(&mut store, store_path)?;
+//             }
+//             None => println!("Figure this out"),
+//         }
+//         input_num += 1;
+//     }
+// }
 
 pub fn handle_stream(
     mut stream: TcpStream,
