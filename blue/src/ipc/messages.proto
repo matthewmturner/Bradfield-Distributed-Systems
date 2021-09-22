@@ -1,0 +1,23 @@
+syntax = "proto3";
+
+package blue.ipc.message;
+
+message Store {
+    map<string, string> records = 1;
+}
+
+message Get {
+    string key = 1;
+}
+
+message Set {
+    string key = 1;
+    string value = 2;
+}
+
+message Request {
+    oneof type {
+        Get get = 1;
+        Set set = 2;
+    }
+}
