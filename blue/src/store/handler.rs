@@ -29,9 +29,9 @@ use super::serialize::persist_store;
 //     loop {
 //         let input = parse_stream_input(&mut stream, &mut input_num)?;
 //         match input.command {
-//             Some(Command::Get) => get_stream_input(&mut stream, input, &mut store)?,
+//             Some(Command::Get) => get_hander(&mut stream, input, &mut store)?,
 //             Some(Command::Set) => {
-//                 store_stream_input(&mut stream, input, &mut store)?;
+//                 set_handler(&mut stream, input, &mut store)?;
 //                 persist_store(&mut store, store_path)?;
 //             }
 //             None => println!("Figure this out"),
@@ -55,9 +55,9 @@ pub fn handle_stream(
         let mut store = store.lock().unwrap();
 
         match input.command {
-            Some(Command::Get) => get_stream_input(&mut stream, input, &mut store)?,
+            Some(Command::Get) => get_hander(&mut stream, input, &mut store)?,
             Some(Command::Set) => {
-                store_stream_input(&mut stream, input, &mut store)?;
+                set_handler(&mut stream, input, &mut store)?;
                 persist_store(&mut store, &store_path)?;
             }
             None => println!("Figure this out"),
@@ -82,7 +82,7 @@ fn parse_stream_input(stream: &mut TcpStream, input_num: &mut i32) -> io::Result
     Ok(user_input)
 }
 
-fn get_stream_input(
+fn get_hander(
     stream: &mut TcpStream,
     input: UserInput,
     store: &mut HashMap<String, String>,
@@ -103,7 +103,7 @@ fn get_stream_input(
     Ok(())
 }
 
-fn store_stream_input(
+fn set_handler(
     stream: &mut TcpStream,
     input: UserInput,
     store: &mut HashMap<String, String>,
