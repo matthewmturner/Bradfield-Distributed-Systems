@@ -9,67 +9,31 @@ use serde_json::json;
 use super::super::ipc::message;
 use super::serialize::persist_store;
 
-// NOTE: Old handler pre multi threading
-// pub fn handle_connection(mut stream: TcpStream) -> io::Result<()> {
-//     println!("Connection established with: {}", stream.peer_addr()?);
-//     let mut input_num: i32 = 1;
-//     let welcome = "Welcome to Blue!\n";
-//     stream.write(welcome.as_bytes())?;
-
-//     let store_path = Path::new("data.json");
-
-//     let mut store: HashMap<String, String> = match store_path.exists() {
-//         true => {
-//             let existing_store = fs::read_to_string(&store_path)?;
-//             serde_json::from_str(&existing_store)?
-//         }
-//         false => HashMap::new(),
-//     };
-
-//     loop {
-//         let input = parse_stream_input(&mut stream, &mut input_num)?;
-//         match input.command {
-//             Some(Command::Get) => get_hander(&mut stream, input, &mut store)?,
-//             Some(Command::Set) => {
-//                 set_handler(&mut stream, input, &mut store)?;
-//                 persist_store(&mut store, store_path)?;
-//             }
-//             None => println!("Figure this out"),
-//         }
-//         input_num += 1;
-//     }
-// }
-
 pub fn handle_stream(
     mut stream: TcpStream,
     store: Arc<Mutex<message::Store>>,
     store_path: Arc<&Path>,
 ) -> io::Result<()> {
     println!("Connection established with: {}", stream.peer_addr()?);
-    let mut input_num: i32 = 1;
     let welcome = "Welcome to Blue!\n";
     stream.write(welcome.as_bytes())?;
 
     loop {
-        let input = parse_stream_input(&mut stream, &mut input_num)?;
+        let input = parse_stream_input(&mut stream)?;
         let mut store = store.lock().unwrap();
 
         match input.command {
-            Some(Command::Get) => get_hander(&mut stream, input, &mut store)?,
+            Some(Command::Get) => get_handler(&mut stream, input, &mut store)?,
             Some(Command::Set) => {
                 set_handler(&mut stream, input, &mut store)?;
                 persist_store(&mut store, &store_path)?;
             }
             None => println!("Figure this out"),
         }
-        input_num += 1;
     }
 }
 
-fn parse_stream_input(stream: &mut TcpStream, input_num: &mut i32) -> io::Result<UserInput> {
-    let msg = format!("[{}] ", input_num);
-    stream.write(msg.as_bytes())?;
-
+fn parse_stream_input(stream: &mut TcpStream) -> io::Result<UserInput> {
     let mut reader = BufReader::new(stream);
     let mut line = String::new();
     let bytes_read = reader.read_line(&mut line)?;
@@ -82,7 +46,7 @@ fn parse_stream_input(stream: &mut TcpStream, input_num: &mut i32) -> io::Result
     Ok(user_input)
 }
 
-fn get_hander(
+fn get_handler(
     stream: &mut TcpStream,
     input: UserInput,
     store: &mut message::Store,

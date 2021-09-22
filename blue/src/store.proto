@@ -1,7 +1,0 @@
-syntax = "proto3";
-
-package blue.ipc.message;
-
-message Store {
-    map<string, string> records = 1;
-}
