@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::io::{self, BufRead, BufReader, ErrorKind, Write};
 use std::net::TcpStream;
 use std::path::Path;
@@ -7,6 +6,7 @@ use std::sync::{Arc, Mutex};
 
 use serde_json::json;
 
+use super::super::ipc::message;
 use super::serialize::persist_store;
 
 // NOTE: Old handler pre multi threading
@@ -42,7 +42,7 @@ use super::serialize::persist_store;
 
 pub fn handle_stream(
     mut stream: TcpStream,
-    store: Arc<Mutex<HashMap<String, String>>>,
+    store: Arc<Mutex<message::Store>>,
     store_path: Arc<&Path>,
 ) -> io::Result<()> {
     println!("Connection established with: {}", stream.peer_addr()?);
@@ -85,19 +85,19 @@ fn parse_stream_input(stream: &mut TcpStream, input_num: &mut i32) -> io::Result
 fn get_hander(
     stream: &mut TcpStream,
     input: UserInput,
-    store: &mut HashMap<String, String>,
+    store: &mut message::Store,
 ) -> io::Result<()> {
     // TODO: Get from store or file
     if let Some(key) = input.value {
         println!("Getting key={}", key);
-        let value = store.get(&key);
+        let value = store.records.get(&key);
         if let Some(v) = value {
             let msg = format!("{}\n", v);
             stream.write(msg.as_bytes())?;
         };
     } else {
         println!("Getting store");
-        let msg = format!("{}\n", json!(store).to_string());
+        let msg = format!("{}\n", json!(store.records).to_string());
         stream.write(msg.as_bytes())?;
     }
     Ok(())
@@ -106,7 +106,7 @@ fn get_hander(
 fn set_handler(
     stream: &mut TcpStream,
     input: UserInput,
-    store: &mut HashMap<String, String>,
+    store: &mut message::Store,
 ) -> io::Result<()> {
     let set_value = input.value.expect("No set value provided");
 
@@ -115,7 +115,7 @@ fn set_handler(
     if tokens.len() == 2 {
         let key = tokens[0];
         let value = tokens[1].trim();
-        store.insert(key.to_string(), value.to_string());
+        store.records.insert(key.to_string(), value.to_string());
         println!("Storing {}={}", key, value);
         let msg = format!("Succesfully wrote key={}\n", key);
         stream.write(msg.as_bytes())?;
