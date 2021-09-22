@@ -5,13 +5,23 @@ use std::net::TcpListener;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
-use blue::{handle_stream, ThreadPool};
+mod ipc;
+mod store;
+
+use store::deserialize::deserialize_store;
+use store::executor::ThreadPool;
+use store::handler::handle_stream;
+use store::serialize::serialize_store;
 
 fn main() -> Result<(), Box<dyn Error>> {
     let listener = TcpListener::bind("127.0.0.1:7878")?;
     let pool = ThreadPool::new(4);
 
     let store_path = Path::new("data.json");
+    let p_store_path = Path::new("data.pb");
+
+    let mut pstore = deserialize_store(&p_store_path)?;
+    println!("{:?}", pstore);
 
     let store: HashMap<String, String> = match store_path.exists() {
         true => {
@@ -20,6 +30,11 @@ fn main() -> Result<(), Box<dyn Error>> {
         }
         false => HashMap::new(),
     };
+    pstore.records.extend(store.clone());
+    let b = serialize_store(&pstore);
+    fs::write(&"data.pb", &b)?;
+
+    println!("{:?}", pstore);
     let store = Arc::new(Mutex::new(store));
     let store_path = Arc::new(store_path);
 
