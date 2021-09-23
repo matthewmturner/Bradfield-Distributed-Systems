@@ -16,7 +16,7 @@ message Set {
 }
 
 message Request {
-    oneof type {
+    oneof command {
         Get get = 1;
         Set set = 2;
     }
