@@ -1,19 +1,24 @@
 use std::error::Error;
 use std::io;
+use std::io::Write;
 use std::net::TcpStream;
-use std::{env, io::Write};
+
+use structopt::StructOpt;
 
 extern crate blue;
 
-use blue::client::handler::{read_client_request, read_store_response, send_client_request};
+use blue::client::args;
+use blue::client::handler::{parse_request, read_client_request};
+use blue::ipc::message;
+use blue::ipc::receiver::read_message;
+use blue::ipc::sender::send_message;
 
 fn main() -> Result<(), Box<dyn Error>> {
-    let args: Vec<String> = env::args().collect();
-    let port = &args[1];
-    let addr = format!("127.0.0.1:{}", port);
+    let opt = args::Opt::from_args();
+    let addr = format!("{}:{}", opt.host, opt.port);
     let mut stream = TcpStream::connect(addr)?;
-    let response = read_store_response(&mut stream)?;
-    print!("{}", response);
+    let welcome = read_message::<message::Welcome>(&mut stream)?;
+    print!("{}", welcome.message);
     io::stdout().flush()?;
 
     let mut input_num: i32 = 1;
@@ -25,9 +30,10 @@ fn main() -> Result<(), Box<dyn Error>> {
         print!("{}", msg);
         io::stdout().flush()?;
         let user_request = read_client_request(&mut stdin)?;
-        send_client_request(user_request, &mut stream)?;
-        let response = read_store_response(&mut stream)?;
-        println!("{}", response);
+        let pb = parse_request(user_request.clone())?;
+        send_message(pb, &mut stream)?;
+        let response = read_message::<message::Response>(&mut stream)?;
+        println!("{:?}", response);
         input_num += 1;
     }
     Ok(())

@@ -3,14 +3,19 @@ use std::net::TcpListener;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
+use structopt::StructOpt;
+
 extern crate blue;
 
+use blue::store::args;
 use blue::store::deserialize::deserialize_store;
 use blue::store::executor::ThreadPool;
 use blue::store::handler::handle_stream;
 
 fn main() -> Result<(), Box<dyn Error>> {
-    let listener = TcpListener::bind("127.0.0.1:7878")?;
+    let opt = args::Opt::from_args();
+    let addr = format!("{}:{}", opt.host, opt.port);
+    let listener = TcpListener::bind(addr)?;
     let pool = ThreadPool::new(4);
 
     let store_path = Path::new("data.pb");
@@ -30,18 +35,3 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
     Ok(())
 }
-
-// NOTE: Old implementation pre multi threading
-// fn main() -> Result<(), Box<dyn Error>> {
-//     let listener = TcpListener::bind("127.0.0.1:7878")?;
-//     let pool = ThreadPool::new(4);
-
-//     for stream in listener.incoming() {
-//         let stream = stream.unwrap();
-
-//         thread::spawn(|| {
-//             handle_connection(stream);
-//         });
-//     }
-//     Ok(())
-// }
