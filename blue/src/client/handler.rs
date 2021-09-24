@@ -1,10 +1,7 @@
-use std::io::{self, BufRead, BufReader, ErrorKind, Stdin, Write};
-use std::net::TcpStream;
+use std::io::{self, BufRead, BufReader, ErrorKind, Stdin};
 
-use prost::Message;
-
+use super::super::ipc::message;
 use super::super::ipc::message::request::Command;
-use super::super::ipc::message::{self, request};
 
 pub fn read_client_request(stdin: &mut Stdin) -> io::Result<String> {
     let mut reader = BufReader::new(stdin);
@@ -17,39 +14,8 @@ pub fn read_client_request(stdin: &mut Stdin) -> io::Result<String> {
     Ok(request)
 }
 
-pub fn send_client_request(request: String, stream: &mut TcpStream) -> io::Result<()> {
-    stream.write(request.as_bytes())?;
-    Ok(())
-}
-
-pub fn send_pb_message<M>(message: M, stream: &mut TcpStream) -> io::Result<()>
-where
-    M: Message,
-{
-    let length = message.encoded_len() as i32;
-    let mut buf: Vec<u8> = Vec::with_capacity(length as usize);
-    message.encode(&mut buf)?;
-    println!("Length: {}", length);
-    stream.write_all(&length.to_le_bytes())?;
-    println!("Buf: {:?}", buf);
-    stream.write_all(&buf)?;
-    Ok(())
-}
-
-pub fn read_store_response(stream: &mut TcpStream) -> io::Result<String> {
-    let mut reader = BufReader::new(stream);
-
-    let response = loop {
-        let mut bytes = String::new();
-        reader.read_line(&mut bytes)?;
-        break bytes;
-    };
-    Ok(response)
-}
-
 pub fn parse_request(input: String) -> io::Result<message::Request> {
     let tokens: Vec<&str> = input.split(" ").collect();
-    println!("{:?}", tokens);
     let command = extract_command(tokens)?;
     println!("{:?}", command);
     Ok(message::Request {

@@ -2,6 +2,10 @@ syntax = "proto3";
 
 package blue.ipc.message;
 
+message Welcome {
+    string message = 1;
+}
+
 message Store {
     map<string, string> records = 1;
 }
@@ -20,4 +24,9 @@ message Request {
         Get get = 1;
         Set set = 2;
     }
+}
+
+message Response {
+    bool success = 1;
+    string message = 2;
 }
