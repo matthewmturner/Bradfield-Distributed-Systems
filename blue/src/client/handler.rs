@@ -22,12 +22,17 @@ pub fn send_client_request(request: String, stream: &mut TcpStream) -> io::Resul
     Ok(())
 }
 
-pub fn send_protobuf<M>(message: M, stream: &mut TcpStream) -> io::Result<()>
+pub fn send_pb_message<M>(message: M, stream: &mut TcpStream) -> io::Result<()>
 where
     M: Message,
 {
-    let bytes = message.encode_length_delimited_to_vec();
-    stream.write(&bytes)?;
+    let length = message.encoded_len() as i32;
+    let mut buf: Vec<u8> = Vec::with_capacity(length as usize);
+    message.encode(&mut buf)?;
+    println!("Length: {}", length);
+    stream.write_all(&length.to_le_bytes())?;
+    println!("Buf: {:?}", buf);
+    stream.write_all(&buf)?;
     Ok(())
 }
 
@@ -44,14 +49,16 @@ pub fn read_store_response(stream: &mut TcpStream) -> io::Result<String> {
 
 pub fn parse_request(input: String) -> io::Result<message::Request> {
     let tokens: Vec<&str> = input.split(" ").collect();
+    println!("{:?}", tokens);
     let command = extract_command(tokens)?;
+    println!("{:?}", command);
     Ok(message::Request {
         command: Some(command),
     })
 }
 
 fn extract_command(tokens: Vec<&str>) -> io::Result<Command> {
-    let command = match tokens[0] {
+    let command = match tokens[0].trim() {
         "get" | "Get" | "GET" => Ok(get_handler(&tokens)?),
         "set" | "Set" | "SET " => Ok(set_handler(&tokens)?),
         _ => Err(io::Error::new(ErrorKind::InvalidData, "Invalid command")),
@@ -61,8 +68,9 @@ fn extract_command(tokens: Vec<&str>) -> io::Result<Command> {
 
 fn get_handler(tokens: &Vec<&str>) -> io::Result<Command> {
     match tokens.len() {
+        1 => Ok(Command::Get(message::Get::default())),
         2 => Ok(Command::Get(message::Get {
-            key: tokens[1].to_string(),
+            key: tokens[1].trim().to_string(),
         })),
         _ => Err(io::Error::new(
             ErrorKind::InvalidData,

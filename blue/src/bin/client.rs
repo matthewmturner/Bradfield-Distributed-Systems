@@ -10,7 +10,7 @@ extern crate blue;
 
 use blue::client::args;
 use blue::client::handler::{
-    parse_request, read_client_request, read_store_response, send_client_request, send_protobuf,
+    parse_request, read_client_request, read_store_response, send_client_request, send_pb_message,
 };
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -31,7 +31,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         io::stdout().flush()?;
         let user_request = read_client_request(&mut stdin)?;
         let pb = parse_request(user_request.clone())?;
-        send_protobuf(pb, &mut stream)?;
+        println!("{:?}", pb);
+        send_pb_message(pb, &mut stream)?;
         // send_client_request(user_request, &mut stream)?;
         let response = read_store_response(&mut stream)?;
         println!("{}", response);
