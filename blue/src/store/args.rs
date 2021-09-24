@@ -3,7 +3,7 @@ use structopt::StructOpt;
 #[derive(StructOpt, Debug)]
 #[structopt(name = "Blue Client")]
 pub struct Opt {
-    /// Local or remote store
+    /// Local or remote store. Must use actual IP (not localhost) to allow remote connections
     #[structopt(short = "h", long = "host", default_value = "localhost")]
     pub host: String,
 

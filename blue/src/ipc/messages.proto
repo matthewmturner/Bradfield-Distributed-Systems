@@ -19,10 +19,20 @@ message Set {
     string value = 2;
 }
 
+message InitiateBackup {
+    string addr = 1;
+}
+
+message ExecuteBackup {
+    Store store = 1;
+}
+
 message Request {
     oneof command {
         Get get = 1;
         Set set = 2;
+        InitiateBackup initiate_backup = 3;
+        ExecuteBackup execute_backup = 4;
     }
 }
 
