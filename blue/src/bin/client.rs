@@ -10,6 +10,7 @@ extern crate blue;
 use blue::client::args;
 use blue::client::handler::{parse_request, read_client_request};
 use blue::ipc::message;
+use blue::ipc::message::request::Command;
 use blue::ipc::receiver::read_message;
 use blue::ipc::sender::send_message;
 
@@ -17,6 +18,12 @@ fn main() -> Result<(), Box<dyn Error>> {
     let opt = args::Opt::from_args();
     let addr = format!("{}:{}", opt.host, opt.port);
     let mut stream = TcpStream::connect(addr)?;
+    let initiate = message::Request {
+        command: Some(Command::InitiateSession(message::InitiateSession {
+            name: opt.name,
+        })),
+    };
+    send_message(initiate, &mut stream)?;
     let welcome = read_message::<message::Welcome>(&mut stream)?;
     print!("{}", welcome.message);
     io::stdout().flush()?;
@@ -36,5 +43,4 @@ fn main() -> Result<(), Box<dyn Error>> {
         println!("{:?}", response);
         input_num += 1;
     }
-    Ok(())
 }

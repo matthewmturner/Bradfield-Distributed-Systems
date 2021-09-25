@@ -7,17 +7,13 @@ use super::super::ipc::message::request::Command;
 
 pub fn read_client_request(stdin: &mut Stdin) -> io::Result<String> {
     let mut reader = BufReader::new(stdin);
-
-    let request = loop {
-        let mut line = String::new();
-        reader.read_line(&mut line)?;
-        break line;
-    };
-    Ok(request)
+    let mut line = String::new();
+    reader.read_line(&mut line)?;
+    Ok(line)
 }
 
 pub fn parse_request(input: String) -> io::Result<message::Request> {
-    let tokens: Vec<&str> = input.split(" ").collect();
+    let tokens: Vec<&str> = input.split(' ').collect();
     let command = extract_command(tokens)?;
     println!("{:?}", command);
     Ok(message::Request {
@@ -35,7 +31,7 @@ fn extract_command(tokens: Vec<&str>) -> io::Result<Command> {
     command
 }
 
-fn get_handler(tokens: &Vec<&str>) -> io::Result<Command> {
+fn get_handler(tokens: &[&str]) -> io::Result<Command> {
     match tokens.len() {
         1 => Ok(Command::Get(message::Get::default())),
         2 => Ok(Command::Get(message::Get {
@@ -48,10 +44,10 @@ fn get_handler(tokens: &Vec<&str>) -> io::Result<Command> {
     }
 }
 
-fn set_handler(tokens: &Vec<&str>) -> io::Result<Command> {
+fn set_handler(tokens: &[&str]) -> io::Result<Command> {
     match tokens.len() {
         2 => {
-            let pairs: Vec<&str> = tokens[1].split("=").collect();
+            let pairs: Vec<&str> = tokens[1].split('=').collect();
             Ok(Command::Set(message::Set {
                 key: pairs[0].to_string(),
                 value: pairs[1].trim().to_string(),

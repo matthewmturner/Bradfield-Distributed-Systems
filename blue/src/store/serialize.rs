@@ -14,7 +14,7 @@ pub fn serialize_store(store: &message::Store) -> Vec<u8> {
 }
 
 pub fn persist_store(store: &mut message::Store, path: &Path) -> io::Result<()> {
-    let bytes = serialize_store(&store);
+    let bytes = serialize_store(store);
     fs::write(&path, &bytes)?;
     Ok(())
 }
