@@ -31,8 +31,8 @@ message Request {
     oneof command {
         Get get = 1;
         Set set = 2;
-        InitiateBackup initiate_backup = 3;
-        ExecuteBackup execute_backup = 4;
+        // InitiateBackup initiate_backup = 3;
+        // ExecuteBackup execute_backup = 4;
     }
 }
 

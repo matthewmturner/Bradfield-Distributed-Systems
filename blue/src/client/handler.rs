@@ -29,7 +29,7 @@ fn extract_command(tokens: Vec<&str>) -> io::Result<Command> {
     let command = match tokens[0].trim() {
         "get" | "Get" | "GET" => Ok(get_handler(&tokens)?),
         "set" | "Set" | "SET " => Ok(set_handler(&tokens)?),
-        "backup" | "Backup" | "BACKUP " => Ok(backup_handler(&tokens)?),
+        // "backup" | "Backup" | "BACKUP " => Ok(backup_handler(&tokens)?),
         _ => Err(io::Error::new(ErrorKind::InvalidData, "Invalid command")),
     };
     command
@@ -54,7 +54,7 @@ fn set_handler(tokens: &Vec<&str>) -> io::Result<Command> {
             let pairs: Vec<&str> = tokens[1].split("=").collect();
             Ok(Command::Set(message::Set {
                 key: pairs[0].to_string(),
-                value: pairs[1].to_string(),
+                value: pairs[1].trim().to_string(),
             }))
         }
         _ => Err(io::Error::new(
@@ -64,17 +64,19 @@ fn set_handler(tokens: &Vec<&str>) -> io::Result<Command> {
     }
 }
 
-fn backup_handler(tokens: &Vec<&str>) -> io::Result<Command> {
-    match tokens.len() {
-        2 => {
-            let addr = SocketAddr::from_str(tokens[1]).expect("TODO: Handle poorly formatted addr");
-            Ok(Command::InitiateBackup(message::InitiateBackup {
-                addr: addr.to_string(),
-            }))
-        }
-        _ => Err(io::Error::new(
-            ErrorKind::InvalidData,
-            "Too many tokens for get command",
-        )),
-    }
-}
+// fn backup_handler(tokens: &Vec<&str>) -> io::Result<Command> {
+//     println!("{:?}", tokens);
+//     match tokens.len() {
+//         2 => {
+//             let addr =
+//                 SocketAddr::from_str(tokens[1].trim()).expect("TODO: Handle poorly formatted addr");
+//             Ok(Command::InitiateBackup(message::InitiateBackup {
+//                 addr: addr.to_string(),
+//             }))
+//         }
+//         _ => Err(io::Error::new(
+//             ErrorKind::InvalidData,
+//             "Too many tokens for get command",
+//         )),
+//     }
+// }

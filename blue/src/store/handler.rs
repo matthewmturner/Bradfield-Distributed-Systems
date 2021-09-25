@@ -34,8 +34,8 @@ pub fn handle_stream(
                 set_handler(&mut stream, c, &mut store)?;
                 persist_store(&mut store, &store_path)?;
             }
-            Some(Command::InitiateBackup(c)) => initiate_backup_handler(c, &mut store)?,
-            Some(Command::ExecuteBackup(c)) => execute_backup_handler(c, &store_path)?,
+            // Some(Command::InitiateBackup(c)) => initiate_backup_handler(c, &mut store)?,
+            // Some(Command::ExecuteBackup(c)) => execute_backup_handler(c, &store_path)?,
             None => println!("Figure this out"),
         }
     }
@@ -78,21 +78,21 @@ fn set_handler(
     Ok(())
 }
 
-fn initiate_backup_handler(
-    backup: message::InitiateBackup,
-    store: &mut message::Store,
-) -> io::Result<()> {
-    println!("Backing up database to {}", backup.addr);
-    let mut backup_stream = TcpStream::connect(backup.addr)?;
-    // TODO: Can this be sent without cloning??
-    send_message(store.clone(), &mut backup_stream)?;
-    Ok(())
-}
+// fn initiate_backup_handler(
+//     backup: message::InitiateBackup,
+//     store: &mut message::Store,
+// ) -> io::Result<()> {
+//     println!("Backing up database to {}", backup.addr);
+//     let mut backup_stream = TcpStream::connect(backup.addr)?;
+//     // TODO: Can this be sent without cloning??
+//     send_message(store.clone(), &mut backup_stream)?;
+//     Ok(())
+// }
 
-fn execute_backup_handler(backup: message::ExecuteBackup, path: &Path) -> io::Result<()> {
-    println!("Storing backup database");
-    if let Some(mut store) = backup.store {
-        persist_store(&mut store, &path);
-    }
-    Ok(())
-}
+// fn execute_backup_handler(backup: message::ExecuteBackup, path: &Path) -> io::Result<()> {
+//     println!("Storing backup database");
+//     if let Some(mut store) = backup.store {
+//         persist_store(&mut store, &path);
+//     }
+//     Ok(())
+// }
