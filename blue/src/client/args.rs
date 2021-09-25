@@ -10,4 +10,7 @@ pub struct Opt {
     /// Host port
     #[structopt(short = "p", long = "port", default_value = "7878")]
     pub port: usize,
+
+    #[structopt(short = "n", long = "name", default_value = "Unknown")]
+    pub name: String,
 }

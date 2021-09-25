@@ -2,6 +2,10 @@ syntax = "proto3";
 
 package blue.ipc.message;
 
+message InitiateSession {
+    string name = 1;
+}
+
 message Welcome {
     string message = 1;
 }
@@ -29,8 +33,9 @@ message ExecuteBackup {
 
 message Request {
     oneof command {
-        Get get = 1;
-        Set set = 2;
+        InitiateSession initiate_session = 1;
+        Get get = 2;
+        Set set = 3;
         // InitiateBackup initiate_backup = 3;
         // ExecuteBackup execute_backup = 4;
     }
