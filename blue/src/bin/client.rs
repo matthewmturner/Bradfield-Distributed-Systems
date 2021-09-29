@@ -40,7 +40,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         let pb = parse_request(user_request.clone())?;
         send_message(pb, &mut stream)?;
         let response = read_message::<message::Response>(&mut stream)?;
-        println!("{:?}", response);
+        println!("{}", response.message);
         input_num += 1;
     }
 }

@@ -10,24 +10,29 @@ use super::super::ipc::message::request::Command;
 use super::super::ipc::receiver::async_read_message;
 use super::super::ipc::sender::async_send_message;
 use super::serialize::persist_store;
+use super::wal::WriteAheadLog;
 
-pub async fn handle_stream(
+pub async fn handle_stream<'a>(
     mut stream: TcpStream,
     store: Arc<Mutex<message::Store>>,
     store_path: Arc<&Path>,
+    wal: Arc<Mutex<WriteAheadLog<'a>>>,
 ) -> io::Result<()> {
     loop {
         println!("Handling");
         let input = async_read_message::<message::Request>(&mut stream).await?;
         println!("{:?}", input);
         let mut store = store.lock().unwrap();
+        let mut wal = wal.lock().unwrap();
 
         match input.command {
             Some(Command::InitiateSession(c)) => initiate_session_handler(&mut stream, c).await?,
             Some(Command::Get(c)) => get_handler(&mut stream, c, &mut store).await?,
             Some(Command::Set(c)) => {
-                set_handler(&mut stream, c, &mut store).await?;
+                set_handler(&mut stream, &c, &mut store).await?;
                 persist_store(&mut store, &store_path)?;
+                println!("Appending sequence #{} to WAL", wal.next_sequence);
+                wal.append_message(c)?;
             }
             // Some(Command::InitiateBackup(c)) => initiate_backup_handler(c, &mut store)?,
             // Some(Command::ExecuteBackup(c)) => execute_backup_handler(c, &store_path)?,
@@ -70,7 +75,7 @@ async fn get_handler(
 
 async fn set_handler(
     stream: &mut TcpStream,
-    set: message::Set,
+    set: &message::Set,
     store: &mut message::Store,
 ) -> io::Result<()> {
     println!("Storing {}={}", set.key, set.value);
