@@ -6,6 +6,19 @@ message InitiateSession {
     string name = 1;
 }
 
+message FollowRequest {
+    string addr = 1;
+}
+
+enum Replication {
+    SYNC = 0;
+    ASYNC = 1;
+}
+
+message FollowResponse {
+    Replication replication = 1;
+}
+
 message Welcome {
     string message = 1;
 }
