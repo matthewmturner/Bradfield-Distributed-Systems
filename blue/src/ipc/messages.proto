@@ -51,6 +51,8 @@ message Request {
         InitiateSession initiate_session = 1;
         Get get = 2;
         Set set = 3;
+        FollowRequest follow_request = 4;
+        FollowResponse follow_response = 5;
         // InitiateBackup initiate_backup = 3;
         // ExecuteBackup execute_backup = 4;
     }

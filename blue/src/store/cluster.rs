@@ -1,15 +1,29 @@
-use std::io;
+use std::io::{self, ErrorKind};
 use std::net::{SocketAddr, TcpStream};
+use std::str::FromStr;
 
 use crate::ipc::receiver::read_message;
 
+use super::super::ipc::message;
 use super::super::ipc::message::{FollowRequest, FollowResponse, Replication};
 use super::super::ipc::sender::send_message;
 
 #[derive(Debug)]
-enum NodeRole {
+pub enum NodeRole {
     Leader,
     Follower,
+}
+
+impl FromStr for NodeRole {
+    type Err = ();
+
+    fn from_str(input: &str) -> Result<NodeRole, Self::Err> {
+        match input {
+            "leader" | "Leader" => Ok(NodeRole::Leader),
+            "follower" | "Follower" => Ok(NodeRole::Follower),
+            _ => Err(()),
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -23,11 +37,13 @@ pub struct Node {
 pub struct Cluster {
     leader: Node,
     sync_follower: Option<Node>,
-    async_follower: Option<Vec<Node>>,
+    async_followers: Option<Vec<Node>>,
 }
 
 impl Cluster {
     pub fn new(addr: SocketAddr, role: NodeRole, leader: SocketAddr) -> io::Result<Cluster> {
+        println!("Creating new cluster");
+        println!("{}{:?}{}", addr, role, leader);
         match role {
             NodeRole::Leader => {
                 let leader = Node {
@@ -38,14 +54,18 @@ impl Cluster {
                 return Ok(Cluster {
                     leader,
                     sync_follower: None,
-                    async_follower: None,
+                    async_followers: None,
                 });
             }
             NodeRole::Follower => {
-                let follow_request = FollowRequest { addr };
-                let mut stream = TcpStream::connect(addr)?;
+                let follow_request = FollowRequest {
+                    addr: addr.to_string(),
+                };
+                let mut stream = TcpStream::connect(leader)?;
                 send_message(follow_request, &mut stream)?;
+                println!("Follow request sent");
                 let follow_response = read_message::<FollowResponse>(&mut stream)?;
+                println!("Follow response received");
                 match follow_response.replication {
                     // Synchronous
                     0 => {
@@ -63,7 +83,7 @@ impl Cluster {
                         return Ok(Cluster {
                             leader,
                             sync_follower: None,
-                            async_follower: None,
+                            async_followers: None,
                         });
                     }
                     // Asynchronous
@@ -82,11 +102,42 @@ impl Cluster {
                         return Ok(Cluster {
                             leader,
                             sync_follower: None,
-                            async_follower: None,
+                            async_followers: None,
                         });
                     }
+                    _ => Err(io::Error::new(
+                        ErrorKind::InvalidData,
+                        "Invalid Cluster config",
+                    )),
                 }
             }
         }
+    }
+    pub fn add_follower(&mut self, addr: SocketAddr) -> io::Result<()> {
+        println!("Adding follower");
+        match self.sync_follower {
+            Some(_) => {
+                let node = Node {
+                    addr,
+                    role: NodeRole::Follower,
+                    replication: Replication::Async,
+                };
+                let followers = self.async_followers.as_mut();
+                followers.unwrap().push(node);
+                let mut stream = TcpStream::connect(self.leader.addr)?;
+                send_message(message::FollowResponse { replication: 1 }, &mut stream)?;
+            }
+            None => {
+                let node = Node {
+                    addr,
+                    role: NodeRole::Follower,
+                    replication: Replication::Sync,
+                };
+                self.sync_follower = Some(node);
+                let mut stream = TcpStream::connect(self.leader.addr)?;
+                send_message(message::FollowResponse { replication: 0 }, &mut stream)?;
+            }
+        }
+        Ok(())
     }
 }

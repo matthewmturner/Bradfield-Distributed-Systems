@@ -1,5 +1,7 @@
 use std::io;
+use std::net::SocketAddr;
 use std::path::Path;
+use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 
 use serde_json::json;
@@ -7,8 +9,9 @@ use tokio::net::TcpStream;
 
 use super::super::ipc::message;
 use super::super::ipc::message::request::Command;
-use super::super::ipc::receiver::async_read_message;
-use super::super::ipc::sender::async_send_message;
+use super::super::ipc::receiver::{async_read_message, read_message};
+use super::super::ipc::sender::{async_send_message, send_message};
+use super::cluster::Cluster;
 use super::serialize::persist_store;
 use super::wal::WriteAheadLog;
 
@@ -17,6 +20,7 @@ pub async fn handle_stream<'a>(
     store: Arc<Mutex<message::Store>>,
     store_path: Arc<&Path>,
     wal: Arc<Mutex<WriteAheadLog<'a>>>,
+    cluster: Arc<Mutex<Cluster>>,
 ) -> io::Result<()> {
     loop {
         println!("Handling");
@@ -24,8 +28,11 @@ pub async fn handle_stream<'a>(
         println!("{:?}", input);
         let mut store = store.lock().unwrap();
         let mut wal = wal.lock().unwrap();
+        let mut cluster = cluster.lock().unwrap();
 
         match input.command {
+            Some(Command::FollowRequest(c)) => follow_request_handler(c, &mut cluster)?,
+            Some(Command::FollowResponse(c)) => follow_response_handler(c),
             Some(Command::InitiateSession(c)) => initiate_session_handler(&mut stream, c).await?,
             Some(Command::Get(c)) => get_handler(&mut stream, c, &mut store).await?,
             Some(Command::Set(c)) => {
@@ -39,6 +46,20 @@ pub async fn handle_stream<'a>(
             None => println!("Figure this out"),
         }
     }
+}
+
+fn follow_request_handler(
+    follow_request: message::FollowRequest,
+    cluster: &mut Cluster,
+) -> io::Result<()> {
+    println!("Follow request handler");
+    let follower_addr = SocketAddr::from_str(follow_request.addr.as_str()).unwrap();
+    cluster.add_follower(follower_addr)?;
+    Ok(())
+}
+
+fn follow_response_handler(follow_response: message::FollowResponse) {
+    println!("{:?}", follow_response);
 }
 
 async fn initiate_session_handler(
