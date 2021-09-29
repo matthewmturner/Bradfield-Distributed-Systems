@@ -14,6 +14,7 @@ pub async fn async_read_message<M: Message + Default>(
     println!("Incoming message length: {}", len);
     let mut buf = vec![0u8; len as usize];
     stream.read_exact(&mut buf).await?;
+    println!("Reading buf: {:?}", buf);
     let user_input = M::decode(&mut buf.as_slice())?;
     Ok(user_input)
 }
@@ -25,6 +26,7 @@ pub fn read_message<M: Message + Default>(stream: &mut TcpStream) -> io::Result<
     println!("Incoming message length: {}", len);
     let mut buf = vec![0u8; len as usize];
     stream.read_exact(&mut buf)?;
+    println!("Reading buf: {:?}", buf);
     let user_input = M::decode(&mut buf.as_slice())?;
     Ok(user_input)
 }

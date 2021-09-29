@@ -59,6 +59,7 @@ fn follow_request_handler(
 }
 
 fn follow_response_handler(follow_response: message::FollowResponse) {
+    println!("Follow response handler");
     println!("{:?}", follow_response);
 }
 
