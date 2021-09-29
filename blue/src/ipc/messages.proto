@@ -16,11 +16,13 @@ message Store {
 
 message Get {
     string key = 1;
+    bool write_to_wal = 2;
 }
 
 message Set {
     string key = 1;
     string value = 2;
+    bool write_to_wal = 3;
 }
 
 message InitiateBackup {

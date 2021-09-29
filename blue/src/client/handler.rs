@@ -15,7 +15,7 @@ pub fn read_client_request(stdin: &mut Stdin) -> io::Result<String> {
 pub fn parse_request(input: String) -> io::Result<message::Request> {
     let tokens: Vec<&str> = input.split(' ').collect();
     let command = extract_command(tokens)?;
-    println!("{:?}", command);
+    // println!("{:?}", command);
     Ok(message::Request {
         command: Some(command),
     })
@@ -36,6 +36,7 @@ fn get_handler(tokens: &[&str]) -> io::Result<Command> {
         1 => Ok(Command::Get(message::Get::default())),
         2 => Ok(Command::Get(message::Get {
             key: tokens[1].trim().to_string(),
+            write_to_wal: false,
         })),
         _ => Err(io::Error::new(
             ErrorKind::InvalidData,
@@ -51,6 +52,7 @@ fn set_handler(tokens: &[&str]) -> io::Result<Command> {
             Ok(Command::Set(message::Set {
                 key: pairs[0].to_string(),
                 value: pairs[1].trim().to_string(),
+                write_to_wal: true,
             }))
         }
         _ => Err(io::Error::new(
