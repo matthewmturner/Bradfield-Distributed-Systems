@@ -27,7 +27,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
     println!("{}", leader_addr);
 
     let listener = TcpListener::bind(addr).await?;
-    let cluster = Cluster::new(addr, role, leader_addr)?;
+    let cluster = Cluster::new(addr, role, leader_addr).await?;
+    // .expect("Failed to generate cluster");
+    // .unwrap();
     println!("{:?}", cluster);
 
     let store_path = Path::new("data.pb");

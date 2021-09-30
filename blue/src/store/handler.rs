@@ -11,7 +11,7 @@ use super::super::ipc::message;
 use super::super::ipc::message::request::Command;
 use super::super::ipc::receiver::{async_read_message, read_message};
 use super::super::ipc::sender::{async_send_message, send_message};
-use super::cluster::Cluster;
+use super::cluster::{Cluster, Node, NodeRole};
 use super::serialize::persist_store;
 use super::wal::WriteAheadLog;
 
@@ -31,8 +31,13 @@ pub async fn handle_stream<'a>(
         let mut cluster = cluster.lock().unwrap();
 
         match input.command {
-            Some(Command::FollowRequest(c)) => follow_request_handler(c, &mut cluster)?,
-            Some(Command::FollowResponse(c)) => follow_response_handler(c),
+            Some(Command::FollowRequest(c)) => {
+                // follow_request_handler(c, &mut cluster).await?
+                follow_request_handler(c, &mut cluster, &mut stream).await?
+            }
+            Some(Command::FollowResponse(c)) => {
+                let cluster = follow_response_handler(c)?;
+            }
             Some(Command::InitiateSession(c)) => initiate_session_handler(&mut stream, c).await?,
             Some(Command::Get(c)) => get_handler(&mut stream, c, &mut store).await?,
             Some(Command::Set(c)) => {
@@ -48,19 +53,69 @@ pub async fn handle_stream<'a>(
     }
 }
 
-fn follow_request_handler(
+async fn follow_request_handler(
     follow_request: message::FollowRequest,
     cluster: &mut Cluster,
+    stream: &mut TcpStream,
 ) -> io::Result<()> {
     println!("Follow request handler");
     let follower_addr = SocketAddr::from_str(follow_request.addr.as_str()).unwrap();
-    cluster.add_follower(follower_addr)?;
+    println!("Follower addr: {:?}", follower_addr);
+    // cluster.add_follower(follower_addr).await?;
+    cluster.add_follower(follower_addr, stream).await?;
+
     Ok(())
 }
 
-fn follow_response_handler(follow_response: message::FollowResponse) {
+fn follow_response_handler(follow_response: message::FollowResponse) -> io::Result<Cluster> {
     println!("Follow response handler");
     println!("{:?}", follow_response);
+    match follow_response.replication {
+        // Synchronous
+        0 => {
+            // let node = Node {
+            //     addr,
+            //     role: NodeRole::Follower,
+            //     replication: message::Replication::Sync,
+            // };
+            let leader = Node {
+                addr: SocketAddr::from_str(&follow_response.leader)
+                    .expect("Failed to parse leader addr"),
+                role: NodeRole::Leader,
+                replication: message::Replication::Sync,
+            };
+            // TODO: Add cluster sync and async followers to followers
+            return Ok(Cluster {
+                leader,
+                sync_follower: None,
+                async_followers: None,
+            });
+        }
+        // Asynchronous
+        1 => {
+            // let node = Node {
+            //     addr,
+            //     role: NodeRole::Follower,
+            //     replication: message::Replication::Sync,
+            // };
+            let leader = Node {
+                addr: SocketAddr::from_str(&follow_response.leader)
+                    .expect("Failed to parse leader addr"),
+                role: NodeRole::Leader,
+                replication: message::Replication::Async,
+            };
+            // TODO: Add cluster sync and async followers to followers
+            return Ok(Cluster {
+                leader,
+                sync_follower: None,
+                async_followers: None,
+            });
+        }
+        _ => Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "Invalid Cluster config",
+        )),
+    }
 }
 
 async fn initiate_session_handler(

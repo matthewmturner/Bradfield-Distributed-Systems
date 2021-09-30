@@ -16,7 +16,8 @@ enum Replication {
 }
 
 message FollowResponse {
-    Replication replication = 1;
+    string leader = 1;
+    Replication replication = 2;
 }
 
 message Welcome {
