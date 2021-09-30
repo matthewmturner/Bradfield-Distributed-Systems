@@ -35,7 +35,8 @@ pub async fn handle_stream<'a>(
                 match r.command {
                     Some(Command::FollowRequest(c)) => {
                         // follow_request_handler(c, &mut cluster).await?
-                        follow_request_handler(c, &mut cluster, &mut stream).await?
+                        follow_request_handler(c, &mut cluster, &mut stream).await?;
+                        println!("New cluster: {:?}", cluster);
                     }
                     Some(Command::FollowResponse(c)) => {
                         let cluster = follow_response_handler(c);

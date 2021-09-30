@@ -216,7 +216,11 @@ impl Cluster {
                     replication: Replication::Async,
                 };
                 let followers = self.async_followers.as_mut();
-                followers.push(node);
+                match followers {
+                    Some(f) => f.push(node),
+                    None => self.async_followers = Some(vec![node]),
+                }
+                // followers.push(node);
                 // let mut stream = TcpStream::connect(self.leader.addr).await?;
                 let response = message::Request {
                     command: Some(Command::FollowResponse(FollowResponse {
