@@ -6,6 +6,20 @@ message InitiateSession {
     string name = 1;
 }
 
+message FollowRequest {
+    string follower_addr = 1;
+}
+
+enum Replication {
+    SYNC = 0;
+    ASYNC = 1;
+}
+
+message FollowResponse {
+    string leader = 1;
+    Replication replication = 2;
+}
+
 message Welcome {
     string message = 1;
 }
@@ -38,6 +52,7 @@ message Request {
         InitiateSession initiate_session = 1;
         Get get = 2;
         Set set = 3;
+        FollowRequest follow_request = 4;
         // InitiateBackup initiate_backup = 3;
         // ExecuteBackup execute_backup = 4;
     }
