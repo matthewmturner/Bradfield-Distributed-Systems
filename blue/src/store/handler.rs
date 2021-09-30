@@ -23,32 +23,42 @@ pub async fn handle_stream<'a>(
     cluster: Arc<Mutex<Cluster>>,
 ) -> io::Result<()> {
     loop {
-        println!("Handling");
-        let input = async_read_message::<message::Request>(&mut stream).await?;
+        println!("Handling stream: {:?}", stream);
+        let input = async_read_message::<message::Request>(&mut stream).await;
         println!("{:?}", input);
-        let mut store = store.lock().unwrap();
-        let mut wal = wal.lock().unwrap();
-        let mut cluster = cluster.lock().unwrap();
+        match input {
+            Ok(r) => {
+                let mut store = store.lock().unwrap();
+                let mut wal = wal.lock().unwrap();
+                let mut cluster = cluster.lock().unwrap();
 
-        match input.command {
-            Some(Command::FollowRequest(c)) => {
-                // follow_request_handler(c, &mut cluster).await?
-                follow_request_handler(c, &mut cluster, &mut stream).await?
+                match r.command {
+                    Some(Command::FollowRequest(c)) => {
+                        // follow_request_handler(c, &mut cluster).await?
+                        follow_request_handler(c, &mut cluster, &mut stream).await?
+                    }
+                    Some(Command::FollowResponse(c)) => {
+                        let cluster = follow_response_handler(c);
+                    }
+                    Some(Command::InitiateSession(c)) => {
+                        initiate_session_handler(&mut stream, c).await?
+                    }
+                    Some(Command::Get(c)) => get_handler(&mut stream, c, &mut store).await?,
+                    Some(Command::Set(c)) => {
+                        set_handler(&mut stream, &c, &mut store).await?;
+                        persist_store(&mut store, &store_path)?;
+                        println!("Appending sequence #{} to WAL", wal.next_sequence);
+                        wal.append_message(c)?;
+                    }
+                    // Some(Command::InitiateBackup(c)) => initiate_backup_handler(c, &mut store)?,
+                    // Some(Command::ExecuteBackup(c)) => execute_backup_handler(c, &store_path)?,
+                    None => println!("Figure this out"),
+                }
             }
-            Some(Command::FollowResponse(c)) => {
-                let cluster = follow_response_handler(c)?;
+            Err(_) => {
+                println!("Unknown command");
+                return Ok(());
             }
-            Some(Command::InitiateSession(c)) => initiate_session_handler(&mut stream, c).await?,
-            Some(Command::Get(c)) => get_handler(&mut stream, c, &mut store).await?,
-            Some(Command::Set(c)) => {
-                set_handler(&mut stream, &c, &mut store).await?;
-                persist_store(&mut store, &store_path)?;
-                println!("Appending sequence #{} to WAL", wal.next_sequence);
-                wal.append_message(c)?;
-            }
-            // Some(Command::InitiateBackup(c)) => initiate_backup_handler(c, &mut store)?,
-            // Some(Command::ExecuteBackup(c)) => execute_backup_handler(c, &store_path)?,
-            None => println!("Figure this out"),
         }
     }
 }
@@ -67,55 +77,55 @@ async fn follow_request_handler(
     Ok(())
 }
 
-fn follow_response_handler(follow_response: message::FollowResponse) -> io::Result<Cluster> {
+fn follow_response_handler(follow_response: message::FollowResponse) {
     println!("Follow response handler");
     println!("{:?}", follow_response);
-    match follow_response.replication {
-        // Synchronous
-        0 => {
-            // let node = Node {
-            //     addr,
-            //     role: NodeRole::Follower,
-            //     replication: message::Replication::Sync,
-            // };
-            let leader = Node {
-                addr: SocketAddr::from_str(&follow_response.leader)
-                    .expect("Failed to parse leader addr"),
-                role: NodeRole::Leader,
-                replication: message::Replication::Sync,
-            };
-            // TODO: Add cluster sync and async followers to followers
-            return Ok(Cluster {
-                leader,
-                sync_follower: None,
-                async_followers: None,
-            });
-        }
-        // Asynchronous
-        1 => {
-            // let node = Node {
-            //     addr,
-            //     role: NodeRole::Follower,
-            //     replication: message::Replication::Sync,
-            // };
-            let leader = Node {
-                addr: SocketAddr::from_str(&follow_response.leader)
-                    .expect("Failed to parse leader addr"),
-                role: NodeRole::Leader,
-                replication: message::Replication::Async,
-            };
-            // TODO: Add cluster sync and async followers to followers
-            return Ok(Cluster {
-                leader,
-                sync_follower: None,
-                async_followers: None,
-            });
-        }
-        _ => Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            "Invalid Cluster config",
-        )),
-    }
+    // match follow_response.replication {
+    //     // Synchronous
+    //     0 => {
+    //         // let node = Node {
+    //         //     addr,
+    //         //     role: NodeRole::Follower,
+    //         //     replication: message::Replication::Sync,
+    //         // };
+    //         let leader = Node {
+    //             addr: SocketAddr::from_str(&follow_response.leader)
+    //                 .expect("Failed to parse leader addr"),
+    //             role: NodeRole::Leader,
+    //             replication: message::Replication::Sync,
+    //         };
+    //         // TODO: Add cluster sync and async followers to followers
+    //         return Ok(Cluster {
+    //             leader,
+    //             sync_follower: None,
+    //             async_followers: None,
+    //         });
+    //     }
+    //     // Asynchronous
+    //     1 => {
+    //         // let node = Node {
+    //         //     addr,
+    //         //     role: NodeRole::Follower,
+    //         //     replication: message::Replication::Sync,
+    //         // };
+    //         let leader = Node {
+    //             addr: SocketAddr::from_str(&follow_response.leader)
+    //                 .expect("Failed to parse leader addr"),
+    //             role: NodeRole::Leader,
+    //             replication: message::Replication::Async,
+    //         };
+    //         // TODO: Add cluster sync and async followers to followers
+    //         return Ok(Cluster {
+    //             leader,
+    //             sync_follower: None,
+    //             async_followers: None,
+    //         });
+    //     }
+    //     _ => Err(io::Error::new(
+    //         io::ErrorKind::InvalidData,
+    //         "Invalid Cluster config",
+    //     )),
+    // }
 }
 
 async fn initiate_session_handler(

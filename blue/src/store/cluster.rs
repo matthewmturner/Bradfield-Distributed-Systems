@@ -3,6 +3,7 @@ use std::net::SocketAddr;
 use std::str::FromStr;
 
 use prost::Message;
+use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
 
 use crate::ipc::receiver::async_read_message;
@@ -73,6 +74,7 @@ impl Cluster {
                 async_send_message(follow_request, &mut stream).await?;
                 println!("Follow request sent");
                 let follow_response = async_read_message::<FollowResponse>(&mut stream).await?;
+                stream.shutdown().await?;
                 println!("Follow response received");
                 match follow_response.replication {
                     // Synchronous
@@ -214,7 +216,7 @@ impl Cluster {
                     replication: Replication::Async,
                 };
                 let followers = self.async_followers.as_mut();
-                followers.unwrap().push(node);
+                followers.push(node);
                 // let mut stream = TcpStream::connect(self.leader.addr).await?;
                 let response = message::Request {
                     command: Some(Command::FollowResponse(FollowResponse {
@@ -246,6 +248,7 @@ impl Cluster {
                     replication: 0,
                 };
                 async_send_message(response, stream).await?;
+                stream.shutdown().await?;
             }
         }
         Ok(())
