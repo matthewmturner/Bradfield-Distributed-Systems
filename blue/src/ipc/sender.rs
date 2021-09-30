@@ -13,7 +13,6 @@ where
     println!("Sending message with length: {}", length);
     let mut buf: Vec<u8> = Vec::with_capacity(length as usize);
     message.encode(&mut buf)?;
-    println!("Sending buf: {:?}", buf);
     stream.write_all(&length.to_le_bytes()).await?;
     stream.write_all(&buf).await?;
     Ok(())
@@ -27,7 +26,6 @@ where
     println!("Sending message with length: {}", length);
     let mut buf: Vec<u8> = Vec::with_capacity(length as usize);
     message.encode(&mut buf)?;
-    println!("Sending buf: {:?}", buf);
     stream.write_all(&length.to_le_bytes())?;
     stream.write_all(&buf)?;
     Ok(())

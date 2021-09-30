@@ -24,13 +24,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
         NodeRole::Leader => addr,
         NodeRole::Follower => SocketAddr::from_str(opt.follow.unwrap().as_str())?,
     };
-    println!("{}", leader_addr);
 
     let listener = TcpListener::bind(addr).await?;
     let cluster = Cluster::new(addr, role, leader_addr).await?;
-    // .expect("Failed to generate cluster");
-    // .unwrap();
-    println!("{:?}", cluster);
 
     let store_path = Path::new("data.pb");
     let store = deserialize_store(store_path)?;
