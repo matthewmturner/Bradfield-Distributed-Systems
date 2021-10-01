@@ -26,7 +26,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     };
 
     let listener = TcpListener::bind(addr).await?;
-    let cluster = Cluster::new(addr, role, leader_addr).await?;
+    let cluster = Cluster::new(addr, &role, leader_addr).await?;
 
     let store_path = Path::new("data.pb");
     let store = deserialize_store(store_path)?;
@@ -58,6 +58,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
         let store_path = Arc::clone(&store_path);
         let wal = Arc::clone(&wal);
         let cluster = Arc::clone(&cluster);
-        handle_stream(stream, store, store_path, wal, cluster).await?;
+        handle_stream(stream, store, store_path, wal, cluster, &role).await?;
     }
 }

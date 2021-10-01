@@ -11,7 +11,7 @@ use super::super::ipc::message;
 use super::super::ipc::message::request::Command;
 use super::super::ipc::receiver::async_read_message;
 use super::super::ipc::sender::async_send_message;
-use super::cluster::Cluster;
+use super::cluster::{Cluster, NodeRole};
 use super::serialize::persist_store;
 use super::wal::WriteAheadLog;
 
@@ -21,6 +21,7 @@ pub async fn handle_stream<'a>(
     store_path: Arc<&Path>,
     wal: Arc<Mutex<WriteAheadLog<'a>>>,
     cluster: Arc<Mutex<Cluster>>,
+    role: &NodeRole,
 ) -> io::Result<()> {
     loop {
         println!("Handling stream: {:?}", stream);
@@ -41,18 +42,27 @@ pub async fn handle_stream<'a>(
                         initiate_session_handler(&mut stream, c).await?
                     }
                     Some(Command::Get(c)) => get_handler(&mut stream, c, &mut store).await?,
-                    Some(Command::Set(c)) => {
-                        set_handler(&mut stream, &c, &mut store).await?;
-                        persist_store(&mut store, &store_path)?;
-                        println!("Appending sequence #{} to WAL", wal.next_sequence);
-                        wal.append_message(c.clone())?;
-                        let r = message::Request {
-                            command: Some(Command::Set(c)),
-                        };
-                        Cluster::replicate(r, &cluster.sync_follower, &cluster.async_followers)
-                            .await?;
-                        println!("Replicated set command");
-                    }
+                    Some(Command::Set(c)) => match role {
+                        NodeRole::Leader => {
+                            set_handler(&mut stream, &c, &mut store).await?;
+                            persist_store(&mut store, &store_path)?;
+                            println!("Appending sequence #{} to WAL", wal.next_sequence);
+                            wal.append_message(c.clone())?;
+                            let r = message::Request {
+                                command: Some(Command::Set(c)),
+                            };
+                            Cluster::replicate(r, &cluster.sync_follower, &cluster.async_followers)
+                                .await?;
+                            println!("Replicated set command");
+                        }
+                        NodeRole::Follower => {
+                            let response = message::Response {
+                                success: false,
+                                message: "Only the leader accepts writes".to_string(),
+                            };
+                            async_send_message(response, &mut stream).await?;
+                        }
+                    },
                     // Some(Command::InitiateBackup(c)) => initiate_backup_handler(c, &mut store)?,
                     // Some(Command::ExecuteBackup(c)) => execute_backup_handler(c, &store_path)?,
                     None => println!("Figure this out"),
@@ -93,20 +103,28 @@ async fn get_handler(
     get: message::Get,
     store: &mut message::Store,
 ) -> io::Result<()> {
-    // TODO: Get from store or file
     println!("Getting key={}", get.key);
-    let value = store.records.get(&get.key);
-    let msg = match value {
-        Some(v) => message::Response {
-            success: true,
-            message: v.clone(),
-        },
-        None => message::Response {
-            success: true,
+    let m = if &get.key == "" {
+        message::Response {
+            success: false,
             message: json!(store.records).to_string(),
-        },
+        }
+    } else {
+        let value = store.records.get(&get.key);
+        let msg = match value {
+            Some(v) => message::Response {
+                success: true,
+                message: v.clone(),
+            },
+            None => message::Response {
+                success: false,
+                // message: json!(store.records).to_string(),
+                message: format!("Unknown key '{}'", &get.key),
+            },
+        };
+        msg
     };
-    async_send_message(msg, stream).await
+    async_send_message(m, stream).await
 }
 
 async fn set_handler(

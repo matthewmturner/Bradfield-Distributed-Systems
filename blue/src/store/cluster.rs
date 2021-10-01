@@ -46,7 +46,7 @@ pub struct Cluster {
 }
 
 impl Cluster {
-    pub async fn new(addr: SocketAddr, role: NodeRole, leader: SocketAddr) -> io::Result<Cluster> {
+    pub async fn new(addr: SocketAddr, role: &NodeRole, leader: SocketAddr) -> io::Result<Cluster> {
         match role {
             NodeRole::Leader => {
                 println!("Creating new cluster with role Leader");

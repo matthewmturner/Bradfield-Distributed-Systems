@@ -24,6 +24,7 @@ Blue was created as the core project for the Bradfield Distributed Systems cours
   - The entire store is rewritten to disk after each `set`
   - A Write-Ahead-Log is updated after each `set` command to enable more efficient backup / synchronization
 - Write-Ahead-Log
+  - Naming convention: "wal{$IP Address and Port}.log
   - Format:
     - Header
       1. 4 magic bytes "BLUE"
