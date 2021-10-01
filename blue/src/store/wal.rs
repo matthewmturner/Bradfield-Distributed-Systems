@@ -1,18 +1,23 @@
 use std::fs::{File, OpenOptions};
 use std::io::{self, ErrorKind, Read, Seek, SeekFrom, Write};
+use std::os::unix::prelude::FileExt;
 use std::path::{Path, PathBuf};
 
 use prost::Message;
 
+use super::super::ipc::message;
 use super::serialize::serialize_message_with_len;
 
 static WAL_VERSION: u8 = 1;
 static PROTO_BUF_VERSION: u8 = 3;
 
+type Sequence = u64;
+
 pub struct WriteAheadLog<'a> {
     path: &'a Path,
     file: File,
-    pub next_sequence: u64,
+    index: u64,             // Start at this byte index when iterating over the WAL
+    pub next_sequence: u64, // Next sequence number to be appended
 }
 
 impl<'a> WriteAheadLog<'a> {
@@ -27,6 +32,7 @@ impl<'a> WriteAheadLog<'a> {
         Ok(WriteAheadLog {
             path,
             file,
+            index: 6,
             next_sequence: 1u64,
         })
     }
@@ -43,6 +49,7 @@ impl<'a> WriteAheadLog<'a> {
             true => Ok(WriteAheadLog {
                 path,
                 file,
+                index: 6,
                 next_sequence: u64::from_le_bytes(sequence_bytes),
             }),
             false => Err(io::Error::new(
@@ -60,3 +67,14 @@ impl<'a> WriteAheadLog<'a> {
         Ok(())
     }
 }
+
+// impl Iterator for WriteAheadLog {
+//     type Item = (Sequence, message::Set);
+//     fn next(&mut self) -> Option<Self::Item> {
+//         let mut buf = [0u8; 8];
+//         self.file.seek(self.index)?;
+//         file.read_exact(&mut buf);
+//         let sequence = u64::from_le_bytes(buf);
+//         let len =
+//     }
+// }

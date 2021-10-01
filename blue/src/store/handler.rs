@@ -45,7 +45,13 @@ pub async fn handle_stream<'a>(
                         set_handler(&mut stream, &c, &mut store).await?;
                         persist_store(&mut store, &store_path)?;
                         println!("Appending sequence #{} to WAL", wal.next_sequence);
-                        wal.append_message(c)?;
+                        wal.append_message(c.clone())?;
+                        let r = message::Request {
+                            command: Some(Command::Set(c)),
+                        };
+                        Cluster::replicate(r, &cluster.sync_follower, &cluster.async_followers)
+                            .await?;
+                        println!("Replicated set command");
                     }
                     // Some(Command::InitiateBackup(c)) => initiate_backup_handler(c, &mut store)?,
                     // Some(Command::ExecuteBackup(c)) => execute_backup_handler(c, &store_path)?,
@@ -118,6 +124,17 @@ async fn set_handler(
 
     Ok(())
 }
+
+// async fn sync_request_handler(own_sequence: u64, cluster: Cluster) {
+//     println!("Requesting sync from sequence #{}", own_sequence);
+//     let leader = cluster.leader.addr;
+//     let stream = TcpStream::connect(leader).await?;
+// }
+
+// async fn sync_response_handler(requested_sequence: u64, cluster: Cluster) {
+//     println!("Sending sync from sequence #{}", requested_sequence);
+//     let stream = TcpStream::connect(leader).await?;
+// }
 
 // fn initiate_backup_handler(
 //     backup: message::InitiateBackup,
