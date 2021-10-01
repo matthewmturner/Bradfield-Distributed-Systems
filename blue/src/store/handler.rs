@@ -118,7 +118,6 @@ async fn get_handler(
             },
             None => message::Response {
                 success: false,
-                // message: json!(store.records).to_string(),
                 message: format!("Unknown key '{}'", &get.key),
             },
         };

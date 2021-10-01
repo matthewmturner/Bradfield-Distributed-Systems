@@ -10,7 +10,7 @@ Blue was created as the core project for the Bradfield Distributed Systems cours
 - Client / Server architecture
   - Client requires the provided Blue client to be run (i.e. you can't use `netcat` or something similar) so that Protocol Buffers messages can be sent.
   - Multiple servers can be run and act as a cluster
-  - Only the leader accepts writes _TODO_
+  - Only the leader accepts writes
 - Accepted commands
   - `set`: Set a single key value pair. e.g. `set name=matt`
   - `get`: Get the value for a single key e.g. `get matt`
@@ -37,6 +37,8 @@ Blue was created as the core project for the Bradfield Distributed Systems cours
 - Replication is semi-synchronous
   - Leader and first follower are synchronous
   - All subsequent followers are asynchronous
+- Partitioning
+  - Range queries not accepted so to improve horizontal scalability Hash mod N partitioning will be used
 
 ## User Guide
 
