@@ -34,7 +34,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let store_path = Arc::new(store_path);
     let store = Arc::new(Mutex::new(store));
 
-    let wal_path = PathBuf::from("wal0000.log");
+    let wal_name = addr.to_string().replace(".", "").replace(":", "");
+    let wal_full_name = format!("wal{}.log", wal_name);
+    let wal_path = PathBuf::from(wal_full_name);
     let wal = match wal_path.exists() {
         true => {
             println!("Existing WAL found");
