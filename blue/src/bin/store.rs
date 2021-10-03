@@ -47,6 +47,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
             WriteAheadLog::new(&wal_path)?
         }
     };
+    &wal.messages()?;
+
     let wal = Arc::new(Mutex::new(wal));
     let cluster = Arc::new(Mutex::new(cluster));
     println!("Blue launched. Waiting for incoming connection");

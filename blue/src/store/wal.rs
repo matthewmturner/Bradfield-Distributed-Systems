@@ -1,8 +1,8 @@
 use std::fs::{File, OpenOptions};
-use std::io::{self, ErrorKind, Read, Seek, SeekFrom, Write};
-use std::os::unix::prelude::FileExt;
+use std::io::{self, Cursor, ErrorKind, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 
+// use bytes::Buf;
 use prost::Message;
 
 use super::super::ipc::message;
@@ -12,11 +12,12 @@ static WAL_VERSION: u8 = 1;
 static PROTO_BUF_VERSION: u8 = 3;
 
 type Sequence = u64;
+pub type WalItem = (Sequence, message::Set);
 
+#[derive(Debug, Clone, Copy)]
 pub struct WriteAheadLog<'a> {
     path: &'a Path,
-    file: File,
-    index: u64,             // Start at this byte index when iterating over the WAL
+    // index: i64,             // Start at this byte index when iterating over the WAL
     pub next_sequence: u64, // Next sequence number to be appended
 }
 
@@ -31,8 +32,7 @@ impl<'a> WriteAheadLog<'a> {
         file.write_all(&sequence)?;
         Ok(WriteAheadLog {
             path,
-            file,
-            index: 6,
+            // index: 6,
             next_sequence: 1u64,
         })
     }
@@ -48,8 +48,7 @@ impl<'a> WriteAheadLog<'a> {
         match &magic == b"BLUE" {
             true => Ok(WriteAheadLog {
                 path,
-                file,
-                index: 6,
+                // index: 6,
                 next_sequence: u64::from_le_bytes(sequence_bytes),
             }),
             false => Err(io::Error::new(
@@ -59,22 +58,62 @@ impl<'a> WriteAheadLog<'a> {
         }
     }
     pub fn append_message<M: Message>(&mut self, message: M) -> io::Result<()> {
-        let bytes = serialize_message_with_len(message)?;
-        let mut file = OpenOptions::new().append(true).open("wal0000.log")?;
+        println!("Appending msg to wal: {:?}", message);
+        // let bytes = serialize_message_with_len(message)?;
+        let bytes = message.encode_length_delimited_to_vec();
+        println!("WAL msg bytes: {:?}", bytes);
+        let mut file = OpenOptions::new().append(true).open(self.path)?;
         file.write_all(&bytes)?;
         self.next_sequence += 1;
         file.write_all(&self.next_sequence.to_le_bytes())?;
         Ok(())
     }
+
+    pub fn messages(self) -> io::Result<Vec<WalItem>> {
+        println!("{:?}", self.path);
+        let mut file = File::open(&self.path)?;
+        let file_len = file.metadata().unwrap().len();
+        file.seek(SeekFrom::Start(6))?;
+
+        let mut msgs: Vec<WalItem> = Vec::new();
+
+        loop {
+            let mut sequence_buf = [0u8; 8];
+            file.read_exact(&mut sequence_buf)?;
+            let sequence = u64::from_le_bytes(sequence_buf);
+            let mut len_buf = [0u8; 1];
+            file.read_exact(&mut len_buf)?;
+            let len = u8::from_le_bytes(len_buf);
+            println!("Seq {} is len {}", sequence, len);
+            let mut msg_buf = vec![0u8; len as usize];
+            Read::by_ref(&mut file).read_exact(&mut msg_buf)?;
+            let msg = message::Set::decode(&mut msg_buf.as_slice())?;
+            msgs.push((sequence, msg));
+            let pos = file.stream_position()?;
+            if (file_len - pos) == 8 {
+                break;
+            }
+        }
+
+        println!("{:?}", msgs);
+        Ok(msgs)
+    }
 }
 
-// impl Iterator for WriteAheadLog {
-//     type Item = (Sequence, message::Set);
+// impl<'a> Iterator for WriteAheadLog<'a> {
+//     type Item = (Sequence, &'a Vec<u8>);
+//     // type Item = (Sequence, message::Set<'a>);
 //     fn next(&mut self) -> Option<Self::Item> {
-//         let mut buf = [0u8; 8];
-//         self.file.seek(self.index)?;
-//         file.read_exact(&mut buf);
-//         let sequence = u64::from_le_bytes(buf);
-//         let len =
+//         let mut sequence_buf = [0u8; 8];
+//         self.file.seek(SeekFrom::Current(self.index)).unwrap();
+//         self.file.read_exact(&mut sequence_buf).unwrap();
+//         let sequence = u64::from_le_bytes(sequence_buf);
+//         let mut len_buf = [0u8];
+//         self.file.read_exact(&mut len_buf).unwrap();
+//         let len = u8::from_le_bytes(len_buf);
+//         let mut msg_buf = vec![0u8; len as usize];
+//         self.file.read_exact(&mut msg_buf).unwrap();
+//         // let msg = message::Set::decode(&mut msg_buf.as_slice()).unwrap();
+//         Some((sequence, &msg_buf))
 //     }
 // }
