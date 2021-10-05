@@ -1,12 +1,11 @@
 use std::fs::{File, OpenOptions};
-use std::io::{self, Cursor, ErrorKind, Read, Seek, SeekFrom, Write};
+use std::io::{self, ErrorKind, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 
 // use bytes::Buf;
 use prost::Message;
 
 use super::super::ipc::message;
-use super::serialize::serialize_message_with_len;
 
 static WAL_VERSION: u8 = 1;
 static PROTO_BUF_VERSION: u8 = 3;
@@ -70,7 +69,6 @@ impl<'a> WriteAheadLog<'a> {
     }
 
     pub fn messages(self) -> io::Result<Vec<WalItem>> {
-        println!("{:?}", self.path);
         let mut file = File::open(&self.path)?;
         let file_len = file.metadata().unwrap().len();
         file.seek(SeekFrom::Start(6))?;
@@ -99,21 +97,3 @@ impl<'a> WriteAheadLog<'a> {
         Ok(msgs)
     }
 }
-
-// impl<'a> Iterator for WriteAheadLog<'a> {
-//     type Item = (Sequence, &'a Vec<u8>);
-//     // type Item = (Sequence, message::Set<'a>);
-//     fn next(&mut self) -> Option<Self::Item> {
-//         let mut sequence_buf = [0u8; 8];
-//         self.file.seek(SeekFrom::Current(self.index)).unwrap();
-//         self.file.read_exact(&mut sequence_buf).unwrap();
-//         let sequence = u64::from_le_bytes(sequence_buf);
-//         let mut len_buf = [0u8];
-//         self.file.read_exact(&mut len_buf).unwrap();
-//         let len = u8::from_le_bytes(len_buf);
-//         let mut msg_buf = vec![0u8; len as usize];
-//         self.file.read_exact(&mut msg_buf).unwrap();
-//         // let msg = message::Set::decode(&mut msg_buf.as_slice()).unwrap();
-//         Some((sequence, &msg_buf))
-//     }
-// }

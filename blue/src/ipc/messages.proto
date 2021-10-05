@@ -10,6 +10,10 @@ message FollowRequest {
     string follower_addr = 1;
 }
 
+message RequestSynchronize {
+    uint64 sequence = 1;
+}
+
 enum Replication {
     SYNC = 0;
     ASYNC = 1;
@@ -53,6 +57,7 @@ message Request {
         Get get = 2;
         Set set = 3;
         FollowRequest follow_request = 4;
+        RequestSynchronize request_synchronize = 5;
         // InitiateBackup initiate_backup = 3;
         // ExecuteBackup execute_backup = 4;
     }

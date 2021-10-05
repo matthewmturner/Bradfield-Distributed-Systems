@@ -12,6 +12,7 @@ use super::super::ipc::message;
 use super::super::ipc::message::request::Command;
 use super::super::ipc::message::{FollowRequest, FollowResponse, Replication};
 use super::super::ipc::sender::{async_send_message, send_message};
+use super::wal::WriteAheadLog;
 
 #[derive(Debug, Clone)]
 pub enum NodeRole {
@@ -128,12 +129,6 @@ impl Cluster {
                     Some(f) => f.push(node),
                     None => self.async_followers = Some(vec![node]),
                 }
-                // let response = message::Request {
-                //     command: Some(Command::FollowResponse(FollowResponse {
-                //         leader: self.leader.addr.to_string(),
-                //         replication: 1,
-                //     })),
-                // };
                 let response = FollowResponse {
                     leader: self.leader.addr.to_string(),
                     replication: 1,
@@ -170,11 +165,6 @@ impl Cluster {
         if let Some(node) = sync_follower {
             Cluster::send_to_follower(&node, message.clone())?;
         }
-        // if let Some(nodes) = async_followers {
-        //     nodes
-        //         .iter()
-        //         .map(move |node| Cluster::async_send_to_followers(node, message.clone()));
-        // }
         if let Some(nodes) = async_followers {
             for node in nodes {
                 Cluster::async_send_to_followers(node, message.clone()).await?;
@@ -195,6 +185,17 @@ impl Cluster {
         println!("Replicating to: {:?}", node);
         let mut stream = asyncTcpStream::connect(node.addr).await?;
         async_send_message(message, &mut stream).await?;
+        Ok(())
+    }
+
+    pub fn synchronize(&self, wal: WriteAheadLog) -> io::Result<()> {
+        let mut stream = TcpStream::connect(self.leader.addr)?;
+        let sync_request = message::Request {
+            command: Some(Command::RequestSynchronize(message::RequestSynchronize {
+                sequence: wal.next_sequence,
+            })),
+        };
+        send_message(sync_request, &mut stream)?;
         Ok(())
     }
 }

@@ -41,6 +41,9 @@ pub async fn handle_stream<'a>(
                     Some(Command::InitiateSession(c)) => {
                         initiate_session_handler(&mut stream, c).await?
                     }
+                    Some(Command::RequestSynchronize(c)) => {
+                        request_synchronize_handler(&mut stream, c).await
+                    }
                     Some(Command::Get(c)) => get_handler(&mut stream, c, &mut store).await?,
                     Some(Command::Set(c)) => match role {
                         NodeRole::Leader => {
@@ -96,6 +99,13 @@ async fn initiate_session_handler(
         message: "Welcome to Blue!\n".to_string(),
     };
     async_send_message(welcome, stream).await
+}
+
+async fn request_synchronize_handler(
+    stream: &mut TcpStream,
+    request_synchronize: message::RequestSynchronize,
+) {
+    println!("Synchronization requested");
 }
 
 async fn get_handler(

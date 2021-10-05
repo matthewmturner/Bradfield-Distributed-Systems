@@ -1,4 +1,5 @@
 use std::error::Error;
+use std::io;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
@@ -47,7 +48,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
             WriteAheadLog::new(&wal_path)?
         }
     };
-    &wal.messages()?;
+
+    match role {
+        NodeRole::Follower => &cluster.synchronize(wal)?,
+        _ => {}
+    };
 
     let wal = Arc::new(Mutex::new(wal));
     let cluster = Arc::new(Mutex::new(cluster));

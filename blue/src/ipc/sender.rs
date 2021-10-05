@@ -14,7 +14,6 @@ where
     let mut buf: Vec<u8> = Vec::with_capacity(length as usize);
     message.encode(&mut buf)?;
     stream.write_all(&length.to_le_bytes()).await?;
-    println!("Msg buf: {:?}", buf);
     stream.write_all(&buf).await?;
     Ok(())
 }
