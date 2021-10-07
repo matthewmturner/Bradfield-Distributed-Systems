@@ -4,13 +4,14 @@ use std::path::Path;
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 
+use prost::Message;
 use serde_json::json;
 use tokio::net::TcpStream;
 
 use super::super::ipc::message;
 use super::super::ipc::message::request::Command;
 use super::super::ipc::receiver::async_read_message;
-use super::super::ipc::sender::async_send_message;
+use super::super::ipc::sender::{async_send_message, send_message};
 use super::cluster::{Cluster, NodeRole};
 use super::serialize::persist_store;
 use super::wal::WriteAheadLog;
@@ -26,7 +27,6 @@ pub async fn handle_stream<'a>(
     loop {
         println!("Handling stream: {:?}", stream);
         let input = async_read_message::<message::Request>(&mut stream).await;
-        println!("Stream input: {:?}", input);
         match input {
             Ok(r) => {
                 let mut store = store.lock().unwrap();
@@ -42,7 +42,7 @@ pub async fn handle_stream<'a>(
                         initiate_session_handler(&mut stream, c).await?
                     }
                     Some(Command::RequestSynchronize(c)) => {
-                        request_synchronize_handler(&mut stream, c).await
+                        request_synchronize_handler(&mut stream, c, &wal).await
                     }
                     Some(Command::Get(c)) => get_handler(&mut stream, c, &mut store).await?,
                     Some(Command::Set(c)) => match role {
@@ -101,11 +101,26 @@ async fn initiate_session_handler(
     async_send_message(welcome, stream).await
 }
 
-async fn request_synchronize_handler(
+async fn request_synchronize_handler<'a>(
     stream: &mut TcpStream,
     request_synchronize: message::RequestSynchronize,
-) {
-    println!("Synchronization requested");
+    store: &mut message::Store,
+    wal: &WriteAheadLog<'a>,
+) -> io::Result<()> {
+    println!(
+        "Synchronization requested: {:?}\nFrom: {:?}",
+        request_synchronize, stream
+    );
+    let seq_start = request_synchronize.sequence;
+    println!("WAL Messages:");
+    for item in wal.messages() {
+        // let (seq, set) = item[0];
+        // println!("Seq {} msg {:?}", seq, set);
+        if item[0].0 >= seq_start {
+            async_send_message(item[0].1.clone(), stream).await?
+        };
+    }
+    Ok(())
 }
 
 async fn get_handler(

@@ -1,7 +1,9 @@
 use std::io::{self, Read};
 use std::net::TcpStream;
 
-use prost::Message;
+use bytes::BytesMut;
+
+use prost::{decode_length_delimiter, length_delimiter_len, Message};
 use tokio::io::AsyncReadExt;
 use tokio::net::TcpStream as asyncTcpStream;
 
@@ -11,10 +13,10 @@ pub async fn async_read_message<M: Message + Default>(
     let mut len_buf = [0u8; 4];
     stream.read_exact(&mut len_buf).await?;
     let len = i32::from_le_bytes(len_buf);
-    println!("Incoming message length: {}", len);
     let mut buf = vec![0u8; len as usize];
     stream.read_exact(&mut buf).await?;
     let user_input = M::decode(&mut buf.as_slice())?;
+    println!("Received message: {:?}", user_input);
     Ok(user_input)
 }
 
@@ -22,9 +24,18 @@ pub fn read_message<M: Message + Default>(stream: &mut TcpStream) -> io::Result<
     let mut len_buf = [0u8; 4];
     stream.read_exact(&mut len_buf)?;
     let len = i32::from_le_bytes(len_buf);
-    println!("Incoming message length: {}", len);
     let mut buf = vec![0u8; len as usize];
     stream.read_exact(&mut buf)?;
     let user_input = M::decode(&mut buf.as_slice())?;
+    println!("Received message: {:?}", user_input);
     Ok(user_input)
+}
+
+pub fn arm(stream: &mut TcpStream) -> io::Result<()> {
+    let mut buf = BytesMut::with_capacity(10);
+    let read_bytes = stream.peek(&mut buf)?;
+    println!("Read {} bytes", read_bytes);
+    let length = decode_length_delimiter(buf)?;
+    println!("Length: {}", length);
+    Ok(())
 }

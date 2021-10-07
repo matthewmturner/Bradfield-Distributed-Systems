@@ -26,6 +26,7 @@ impl<'a> WriteAheadLog<'a> {
         let header = [WAL_VERSION, PROTO_BUF_VERSION];
         let sequence = 1u64.to_le_bytes();
         let mut file = File::create(path)?;
+        // Do the below in one write call to minimize sys
         file.write_all(magic)?;
         file.write_all(&header)?;
         file.write_all(&sequence)?;
@@ -74,6 +75,9 @@ impl<'a> WriteAheadLog<'a> {
         file.seek(SeekFrom::Start(6))?;
 
         let mut msgs: Vec<WalItem> = Vec::new();
+        if self.next_sequence == 1 {
+            return Ok(msgs);
+        }
 
         loop {
             let mut sequence_buf = [0u8; 8];
@@ -82,7 +86,6 @@ impl<'a> WriteAheadLog<'a> {
             let mut len_buf = [0u8; 1];
             file.read_exact(&mut len_buf)?;
             let len = u8::from_le_bytes(len_buf);
-            println!("Seq {} is len {}", sequence, len);
             let mut msg_buf = vec![0u8; len as usize];
             Read::by_ref(&mut file).read_exact(&mut msg_buf)?;
             let msg = message::Set::decode(&mut msg_buf.as_slice())?;
@@ -93,7 +96,6 @@ impl<'a> WriteAheadLog<'a> {
             }
         }
 
-        println!("{:?}", msgs);
         Ok(msgs)
     }
 }

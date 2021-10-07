@@ -14,6 +14,10 @@ message RequestSynchronize {
     uint64 sequence = 1;
 }
 
+message SynchronizeResponse {
+    uint64 sequence = 1;
+}
+
 enum Replication {
     SYNC = 0;
     ASYNC = 1;

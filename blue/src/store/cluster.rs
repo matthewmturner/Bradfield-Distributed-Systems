@@ -6,7 +6,7 @@ use prost::Message;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream as asyncTcpStream;
 
-use crate::ipc::receiver::async_read_message;
+use crate::ipc::receiver::{arm, async_read_message};
 
 use super::super::ipc::message;
 use super::super::ipc::message::request::Command;
@@ -47,7 +47,13 @@ pub struct Cluster {
 }
 
 impl Cluster {
-    pub async fn new(addr: SocketAddr, role: &NodeRole, leader: SocketAddr) -> io::Result<Cluster> {
+    pub async fn new<'a>(
+        addr: SocketAddr,
+        role: &NodeRole,
+        leader: SocketAddr,
+        wal: &WriteAheadLog<'a>,
+        store: &mut message::Store,
+    ) -> io::Result<Cluster> {
         match role {
             NodeRole::Leader => {
                 println!("Creating new cluster with role Leader");
@@ -73,7 +79,7 @@ impl Cluster {
                 async_send_message(follow_request, &mut stream).await?;
                 let follow_response = async_read_message::<FollowResponse>(&mut stream).await?;
                 stream.shutdown().await?;
-                match follow_response.replication {
+                let cluster = match follow_response.replication {
                     // Synchronous
                     0 => {
                         let leader = Node {
@@ -82,11 +88,11 @@ impl Cluster {
                             replication: Replication::Sync,
                         };
                         // TODO: Add cluster sync and async followers to followers
-                        return Ok(Cluster {
+                        Ok(Cluster {
                             leader,
                             sync_follower: None,
                             async_followers: None,
-                        });
+                        })
                     }
                     // Asynchronous
                     1 => {
@@ -96,17 +102,19 @@ impl Cluster {
                             replication: Replication::Async,
                         };
                         // TODO: Add cluster sync and async followers to followers
-                        return Ok(Cluster {
+                        Ok(Cluster {
                             leader,
                             sync_follower: None,
                             async_followers: None,
-                        });
+                        })
                     }
                     _ => Err(io::Error::new(
                         ErrorKind::InvalidData,
                         "Invalid Cluster config",
                     )),
-                }
+                };
+                Cluster::synchronize(leader, &wal, store)?;
+                cluster
             }
         }
     }
@@ -115,6 +123,7 @@ impl Cluster {
         addr: SocketAddr,
         stream: &mut asyncTcpStream,
     ) -> io::Result<()> {
+        // TODO: Handle failure when adding following
         // Sync follower already exists
         match self.sync_follower {
             Some(_) => {
@@ -142,12 +151,18 @@ impl Cluster {
                     replication: Replication::Sync,
                 };
                 println!("Adding sync follower: {:?}", node);
-                self.sync_follower = Some(node);
                 let response = FollowResponse {
                     leader: self.leader.addr.to_string(),
                     replication: 0,
                 };
-                async_send_message(response, stream).await?;
+                // async_send_message(response, stream).await?;
+                let r = async_send_message(response, stream).await;
+                println!("{:?}", r);
+                match r {
+                    Ok(_) => self.sync_follower = Some(node),
+                    Err(_) => println!("Failed to communicate with follower"),
+                }
+                // self.sync_follower = Some(node);
                 stream.shutdown().await?;
             }
         }
@@ -188,14 +203,21 @@ impl Cluster {
         Ok(())
     }
 
-    pub fn synchronize(&self, wal: WriteAheadLog) -> io::Result<()> {
-        let mut stream = TcpStream::connect(self.leader.addr)?;
+    fn synchronize(
+        leader: SocketAddr,
+        wal: &WriteAheadLog,
+        store: &mut message::Store,
+    ) -> io::Result<()> {
+        println!("Synchronizing to leader");
+        let mut stream = TcpStream::connect(leader)?;
         let sync_request = message::Request {
             command: Some(Command::RequestSynchronize(message::RequestSynchronize {
                 sequence: wal.next_sequence,
             })),
         };
         send_message(sync_request, &mut stream)?;
+        arm(&mut stream)?;
+
         Ok(())
     }
 }

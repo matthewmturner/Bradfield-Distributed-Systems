@@ -10,6 +10,7 @@ use tokio::net::TcpListener;
 
 extern crate blue;
 
+use blue::ipc::message;
 use blue::store::args;
 use blue::store::cluster::{Cluster, NodeRole};
 use blue::store::deserialize::deserialize_store;
@@ -26,17 +27,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
         NodeRole::Follower => SocketAddr::from_str(opt.follow.unwrap().as_str())?,
     };
 
-    let listener = TcpListener::bind(addr).await?;
-    let cluster = Cluster::new(addr, &role, leader_addr).await?;
-
-    let store_path = Path::new("data.pb");
-    let store = deserialize_store(store_path)?;
-    //  TODO: Are Arc / Mutex needed?
-    let store_path = Arc::new(store_path);
-    let store = Arc::new(Mutex::new(store));
-
     let wal_name = addr.to_string().replace(".", "").replace(":", "");
     let wal_full_name = format!("wal{}.log", wal_name);
+    // TODO: Can this be Path instead of PathBuf
     let wal_path = PathBuf::from(wal_full_name);
     let wal = match wal_path.exists() {
         true => {
@@ -49,10 +42,20 @@ async fn main() -> Result<(), Box<dyn Error>> {
         }
     };
 
-    match role {
-        NodeRole::Follower => &cluster.synchronize(wal)?,
-        _ => {}
+    let store_pth = format!("{}.pb", addr);
+    let store_path = Path::new(&store_pth);
+    let mut store = match store_path.exists() {
+        true => deserialize_store(store_path)?,
+        false => message::Store::default(),
     };
+    // let mut store = deserialize_store(store_path)?;
+
+    let listener = TcpListener::bind(addr).await?;
+    let cluster = Cluster::new(addr, &role, leader_addr, &wal, &mut store).await?;
+
+    //  TODO: Are Arc / Mutex needed?
+    let store_path = Arc::new(store_path);
+    let store = Arc::new(Mutex::new(store));
 
     let wal = Arc::new(Mutex::new(wal));
     let cluster = Arc::new(Mutex::new(cluster));
