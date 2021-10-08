@@ -1,6 +1,4 @@
 use std::io::{self, BufRead, BufReader, ErrorKind, Stdin};
-use std::net::SocketAddr;
-use std::str::FromStr;
 
 use super::super::ipc::message;
 use super::super::ipc::message::request::Command;

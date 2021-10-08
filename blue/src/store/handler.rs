@@ -4,7 +4,6 @@ use std::path::Path;
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 
-use prost::Message;
 use serde_json::json;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream as asyncTcpStream;
@@ -28,12 +27,14 @@ pub async fn handle_stream<'a>(
     loop {
         println!("Handling stream: {:?}", stream);
         let input = async_read_message::<message::Request>(&mut stream).await;
+        println!("Input: {:?}", input);
         match input {
             Ok(r) => {
                 let mut store = store.lock().unwrap();
                 let mut wal = wal.lock().unwrap();
                 let mut cluster = cluster.lock().unwrap();
 
+                // TODO: Update single letters
                 match r.command {
                     Some(Command::FollowRequest(c)) => {
                         follow_request_handler(c, &mut cluster, &mut stream).await?;
@@ -51,7 +52,7 @@ pub async fn handle_stream<'a>(
                             async_set_handler(&mut stream, &c, &mut store).await?;
                             persist_store(&mut store, &store_path)?;
                             println!("Appending sequence #{} to WAL", wal.next_sequence);
-                            wal.append_message(c.clone())?;
+                            wal.append_message(&c)?;
                             let r = message::Request {
                                 command: Some(Command::Set(c)),
                             };
@@ -66,7 +67,7 @@ pub async fn handle_stream<'a>(
                                 replication_handler(&c, &mut store).await?;
                                 persist_store(&mut store, &store_path)?;
                                 println!("Appending sequence #{} to WAL", wal.next_sequence);
-                                wal.append_message(c.clone())?;
+                                wal.append_message(&c)?;
                             } else {
                                 let response = message::Response {
                                     success: false,
@@ -121,18 +122,25 @@ async fn synchronize_request_handler<'a>(
         request_synchronize, stream
     );
     let seq_start = request_synchronize.next_sequence;
+
     let synchronize_response = message::SynchronizeResponse {
         latest_sequence: wal.next_sequence - 1,
     };
     async_send_message(synchronize_response, stream).await?;
-    println!("WAL Messages: {:?}", wal.messages());
-    for item in wal.messages() {
-        println!("Seq: {}", item[0].0);
-        if item[0].0 >= seq_start {
-            let seq_bytes = item[0].0.to_le_bytes();
+    if seq_start == wal.next_sequence {
+        println!("Synchronization not required. Follower already up to date");
+        return Ok(());
+    }
+    let messages = wal.messages()?;
+    println!("WAL Messages: {:?}", messages);
+    for item in messages {
+        println!("Seq: {}", item.0);
+        if item.0 >= seq_start {
+            let seq_bytes = item.0.to_le_bytes();
             stream.write_all(&seq_bytes).await?;
-            async_send_message(item[0].1.clone(), stream).await?
+            async_send_message(item.1.clone(), stream).await?
         };
+        println!("Synchronization complete");
     }
     Ok(())
 }
@@ -143,7 +151,7 @@ async fn get_handler(
     store: &mut message::Store,
 ) -> io::Result<()> {
     println!("Getting key={}", get.key);
-    let m = if &get.key == "" {
+    let m = if get.key.is_empty() {
         message::Response {
             success: false,
             message: json!(store.records).to_string(),
@@ -214,8 +222,8 @@ pub fn synchronize_handler(
     store: &mut message::Store,
 ) -> io::Result<()> {
     // TODO: Send message back to leader to remove from WAL
-    println!("Synchronize storing {}={}", set.key, set.value);
     store.records.insert(set.key.clone(), set.value.clone());
+    println!("Synchronized {}={}", set.key, set.value);
     Ok(())
 }
 

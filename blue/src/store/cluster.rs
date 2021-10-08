@@ -52,7 +52,7 @@ impl Cluster {
         addr: SocketAddr,
         role: &NodeRole,
         leader: SocketAddr,
-        wal: &WriteAheadLog<'a>,
+        wal: &mut WriteAheadLog<'a>,
         store: &mut message::Store,
     ) -> io::Result<Cluster> {
         match role {
@@ -63,11 +63,11 @@ impl Cluster {
                     role: NodeRole::Leader,
                     replication: Replication::Sync,
                 };
-                return Ok(Cluster {
+                Ok(Cluster {
                     leader,
                     sync_follower: None,
                     async_followers: None,
-                });
+                })
             }
             NodeRole::Follower => {
                 println!("Joining cluster (leader: {:?}) as follower", leader);
@@ -114,7 +114,7 @@ impl Cluster {
                         "Invalid Cluster config",
                     )),
                 };
-                Cluster::synchronize(leader, &wal, store)?;
+                Cluster::synchronize(leader, wal, store)?;
                 cluster
             }
         }
@@ -179,7 +179,7 @@ impl Cluster {
         M: Message + Clone,
     {
         if let Some(node) = sync_follower {
-            Cluster::send_to_follower(&node, message.clone())?;
+            Cluster::send_to_follower(node, message.clone())?;
         }
         if let Some(nodes) = async_followers {
             for node in nodes {
@@ -206,7 +206,7 @@ impl Cluster {
 
     fn synchronize(
         leader: SocketAddr,
-        wal: &WriteAheadLog,
+        wal: &mut WriteAheadLog,
         store: &mut message::Store,
     ) -> io::Result<()> {
         println!("Synchronizing to leader");
@@ -219,13 +219,18 @@ impl Cluster {
         send_message(sync_request, &mut stream)?;
         let synchronize_response = read_message::<message::SynchronizeResponse>(&mut stream)?;
         let latest_sequence = synchronize_response.latest_sequence;
-        println!("Latest sequence: {}", latest_sequence);
+        println!("Latest leader sequence: {}", latest_sequence);
+        if latest_sequence == wal.next_sequence - 1 {
+            println!("Already synchronized with leader");
+            return Ok(());
+        }
         loop {
             let mut seq_bytes = [0u8; 8];
             stream.read_exact(&mut seq_bytes)?;
             let sequence = u64::from_le_bytes(seq_bytes);
             let set = read_message::<message::Set>(&mut stream)?;
             synchronize_handler(&set, store)?;
+            wal.append_message(&set)?;
             if sequence == latest_sequence {
                 break;
             }

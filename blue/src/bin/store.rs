@@ -1,5 +1,4 @@
 use std::error::Error;
-use std::io;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
@@ -31,7 +30,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let wal_full_name = format!("wal{}.log", wal_name);
     // TODO: Can this be Path instead of PathBuf
     let wal_path = PathBuf::from(wal_full_name);
-    let wal = match wal_path.exists() {
+    let mut wal = match wal_path.exists() {
         true => {
             println!("Existing WAL found");
             WriteAheadLog::open(&wal_path)?
@@ -41,6 +40,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             WriteAheadLog::new(&wal_path)?
         }
     };
+    println!("WAL: {:?}", wal);
 
     let store_pth = format!("{}.pb", addr);
     let store_path = Path::new(&store_pth);
@@ -51,7 +51,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // let mut store = deserialize_store(store_path)?;
 
     let listener = TcpListener::bind(addr).await?;
-    let cluster = Cluster::new(addr, &role, leader_addr, &wal, &mut store).await?;
+    let cluster = Cluster::new(addr, &role, leader_addr, &mut wal, &mut store).await?;
 
     //  TODO: Are Arc / Mutex needed?
     let store_path = Arc::new(store_path);

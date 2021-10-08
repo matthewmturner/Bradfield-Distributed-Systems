@@ -10,7 +10,10 @@ where
     M: Message,
 {
     let length = message.encoded_len() as i32;
-    println!("Sending message: {:?} \n\tOn Stream: {:?}", message, stream);
+    println!(
+        "Sending message:\n\t{:?}\nOn Stream:\n\t{:?}",
+        message, stream
+    );
     let mut buf: Vec<u8> = Vec::with_capacity(length as usize);
     message.encode(&mut buf)?;
     stream.write_all(&length.to_le_bytes()).await?;
