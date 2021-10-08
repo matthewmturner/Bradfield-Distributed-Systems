@@ -3,7 +3,7 @@ use std::net::TcpStream;
 
 use bytes::BytesMut;
 
-use prost::{decode_length_delimiter, length_delimiter_len, Message};
+use prost::{decode_length_delimiter, Message};
 use tokio::io::AsyncReadExt;
 use tokio::net::TcpStream as asyncTcpStream;
 

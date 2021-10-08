@@ -1,4 +1,4 @@
-use std::io::{self, ErrorKind};
+use std::io::{self, ErrorKind, Read};
 use std::net::{SocketAddr, TcpStream};
 use std::str::FromStr;
 
@@ -6,12 +6,13 @@ use prost::Message;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream as asyncTcpStream;
 
-use crate::ipc::receiver::{arm, async_read_message};
+use crate::ipc::receiver::{async_read_message, read_message};
 
 use super::super::ipc::message;
 use super::super::ipc::message::request::Command;
 use super::super::ipc::message::{FollowRequest, FollowResponse, Replication};
 use super::super::ipc::sender::{async_send_message, send_message};
+use super::super::store::handler::synchronize_handler;
 use super::wal::WriteAheadLog;
 
 #[derive(Debug, Clone)]
@@ -211,13 +212,24 @@ impl Cluster {
         println!("Synchronizing to leader");
         let mut stream = TcpStream::connect(leader)?;
         let sync_request = message::Request {
-            command: Some(Command::RequestSynchronize(message::RequestSynchronize {
-                sequence: wal.next_sequence,
+            command: Some(Command::SynchronizeRequest(message::SynchronizeRequest {
+                next_sequence: wal.next_sequence,
             })),
         };
         send_message(sync_request, &mut stream)?;
-        arm(&mut stream)?;
-
+        let synchronize_response = read_message::<message::SynchronizeResponse>(&mut stream)?;
+        let latest_sequence = synchronize_response.latest_sequence;
+        println!("Latest sequence: {}", latest_sequence);
+        loop {
+            let mut seq_bytes = [0u8; 8];
+            stream.read_exact(&mut seq_bytes)?;
+            let sequence = u64::from_le_bytes(seq_bytes);
+            let set = read_message::<message::Set>(&mut stream)?;
+            synchronize_handler(&set, store)?;
+            if sequence == latest_sequence {
+                break;
+            }
+        }
         Ok(())
     }
 }

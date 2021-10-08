@@ -1,12 +1,13 @@
 use std::io;
-use std::net::SocketAddr;
+use std::net::{SocketAddr, TcpStream};
 use std::path::Path;
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 
 use prost::Message;
 use serde_json::json;
-use tokio::net::TcpStream;
+use tokio::io::AsyncWriteExt;
+use tokio::net::TcpStream as asyncTcpStream;
 
 use super::super::ipc::message;
 use super::super::ipc::message::request::Command;
@@ -17,7 +18,7 @@ use super::serialize::persist_store;
 use super::wal::WriteAheadLog;
 
 pub async fn handle_stream<'a>(
-    mut stream: TcpStream,
+    mut stream: asyncTcpStream,
     store: Arc<Mutex<message::Store>>,
     store_path: Arc<&Path>,
     wal: Arc<Mutex<WriteAheadLog<'a>>>,
@@ -41,13 +42,13 @@ pub async fn handle_stream<'a>(
                     Some(Command::InitiateSession(c)) => {
                         initiate_session_handler(&mut stream, c).await?
                     }
-                    Some(Command::RequestSynchronize(c)) => {
-                        request_synchronize_handler(&mut stream, c, &wal).await
+                    Some(Command::SynchronizeRequest(c)) => {
+                        synchronize_request_handler(&mut stream, c, &wal).await?
                     }
                     Some(Command::Get(c)) => get_handler(&mut stream, c, &mut store).await?,
                     Some(Command::Set(c)) => match role {
                         NodeRole::Leader => {
-                            set_handler(&mut stream, &c, &mut store).await?;
+                            async_set_handler(&mut stream, &c, &mut store).await?;
                             persist_store(&mut store, &store_path)?;
                             println!("Appending sequence #{} to WAL", wal.next_sequence);
                             wal.append_message(c.clone())?;
@@ -59,11 +60,20 @@ pub async fn handle_stream<'a>(
                             println!("Replicated set command");
                         }
                         NodeRole::Follower => {
-                            let response = message::Response {
-                                success: false,
-                                message: "Only the leader accepts writes".to_string(),
-                            };
-                            async_send_message(response, &mut stream).await?;
+                            let peer = stream.peer_addr()?;
+                            println!("Replication request from {}", peer);
+                            if peer == cluster.leader.addr {
+                                replication_handler(&c, &mut store).await?;
+                                persist_store(&mut store, &store_path)?;
+                                println!("Appending sequence #{} to WAL", wal.next_sequence);
+                                wal.append_message(c.clone())?;
+                            } else {
+                                let response = message::Response {
+                                    success: false,
+                                    message: "Only the leader accepts writes".to_string(),
+                                };
+                                async_send_message(response, &mut stream).await?;
+                            }
                         }
                     },
                     // Some(Command::InitiateBackup(c)) => initiate_backup_handler(c, &mut store)?,
@@ -82,7 +92,7 @@ pub async fn handle_stream<'a>(
 async fn follow_request_handler(
     follow_request: message::FollowRequest,
     cluster: &mut Cluster,
-    stream: &mut TcpStream,
+    stream: &mut asyncTcpStream,
 ) -> io::Result<()> {
     let follower_addr = SocketAddr::from_str(follow_request.follower_addr.as_str()).unwrap();
     println!("Adding follower: {:?}", follower_addr);
@@ -91,7 +101,7 @@ async fn follow_request_handler(
 }
 
 async fn initiate_session_handler(
-    stream: &mut TcpStream,
+    stream: &mut asyncTcpStream,
     initiate_session: message::InitiateSession,
 ) -> io::Result<()> {
     println!("Initiating session with {}", initiate_session.name);
@@ -101,22 +111,26 @@ async fn initiate_session_handler(
     async_send_message(welcome, stream).await
 }
 
-async fn request_synchronize_handler<'a>(
-    stream: &mut TcpStream,
-    request_synchronize: message::RequestSynchronize,
-    store: &mut message::Store,
+async fn synchronize_request_handler<'a>(
+    stream: &mut asyncTcpStream,
+    request_synchronize: message::SynchronizeRequest,
     wal: &WriteAheadLog<'a>,
 ) -> io::Result<()> {
     println!(
         "Synchronization requested: {:?}\nFrom: {:?}",
         request_synchronize, stream
     );
-    let seq_start = request_synchronize.sequence;
-    println!("WAL Messages:");
+    let seq_start = request_synchronize.next_sequence;
+    let synchronize_response = message::SynchronizeResponse {
+        latest_sequence: wal.next_sequence - 1,
+    };
+    async_send_message(synchronize_response, stream).await?;
+    println!("WAL Messages: {:?}", wal.messages());
     for item in wal.messages() {
-        // let (seq, set) = item[0];
-        // println!("Seq {} msg {:?}", seq, set);
+        println!("Seq: {}", item[0].0);
         if item[0].0 >= seq_start {
+            let seq_bytes = item[0].0.to_le_bytes();
+            stream.write_all(&seq_bytes).await?;
             async_send_message(item[0].1.clone(), stream).await?
         };
     }
@@ -124,7 +138,7 @@ async fn request_synchronize_handler<'a>(
 }
 
 async fn get_handler(
-    stream: &mut TcpStream,
+    stream: &mut asyncTcpStream,
     get: message::Get,
     store: &mut message::Store,
 ) -> io::Result<()> {
@@ -151,8 +165,8 @@ async fn get_handler(
     async_send_message(m, stream).await
 }
 
-async fn set_handler(
-    stream: &mut TcpStream,
+async fn async_set_handler(
+    stream: &mut asyncTcpStream,
     set: &message::Set,
     store: &mut message::Store,
 ) -> io::Result<()> {
@@ -164,6 +178,44 @@ async fn set_handler(
     };
     async_send_message(msg, stream).await?;
 
+    Ok(())
+}
+
+pub fn set_handler(
+    stream: &mut TcpStream,
+    set: &message::Set,
+    store: &mut message::Store,
+) -> io::Result<()> {
+    println!("Storing {}={}", set.key, set.value);
+    store.records.insert(set.key.clone(), set.value.clone());
+    let msg = message::Response {
+        success: true,
+        message: "Succesfully wrote key to in memory story".to_string(),
+    };
+    send_message(msg, stream)?;
+
+    Ok(())
+}
+
+async fn replication_handler(
+    // stream: &mut asyncTcpStream,
+    set: &message::Set,
+    store: &mut message::Store,
+) -> io::Result<()> {
+    // TODO: Send message back to leader to remove from WAL
+    println!("Replication storing {}={}", set.key, set.value);
+    store.records.insert(set.key.clone(), set.value.clone());
+    Ok(())
+}
+
+pub fn synchronize_handler(
+    // stream: &mut asyncTcpStream,
+    set: &message::Set,
+    store: &mut message::Store,
+) -> io::Result<()> {
+    // TODO: Send message back to leader to remove from WAL
+    println!("Synchronize storing {}={}", set.key, set.value);
+    store.records.insert(set.key.clone(), set.value.clone());
     Ok(())
 }
 
