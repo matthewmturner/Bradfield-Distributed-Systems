@@ -1,6 +1,6 @@
 use std::fs::{File, OpenOptions};
 use std::io::{self, ErrorKind, Read, Seek, SeekFrom, Write};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use prost::Message;
 
@@ -62,7 +62,6 @@ impl<'a> WriteAheadLog<'a> {
         println!("Appending msg to wal: {:?}", message);
         // let bytes = serialize_message_with_len(message)?;
         let bytes = message.encode_length_delimited_to_vec();
-        println!("WAL msg bytes: {:?}", bytes);
         let mut file = OpenOptions::new().append(true).open(self.path)?;
         file.write_all(&bytes)?;
         self.next_sequence += 1;

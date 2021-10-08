@@ -16,6 +16,8 @@ use blue::store::deserialize::deserialize_store;
 use blue::store::handler::handle_stream;
 use blue::store::wal::WriteAheadLog;
 
+// TODO: Handle writing to STDOUT vs STDERR
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     let opt = args::Opt::from_args();
