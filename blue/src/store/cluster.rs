@@ -156,14 +156,12 @@ impl Cluster {
                     leader: self.leader.addr.to_string(),
                     replication: 0,
                 };
-                // async_send_message(response, stream).await?;
                 let r = async_send_message(response, stream).await;
                 println!("{:?}", r);
                 match r {
                     Ok(_) => self.sync_follower = Some(node),
                     Err(_) => println!("Failed to communicate with follower"),
                 }
-                // self.sync_follower = Some(node);
                 stream.shutdown().await?;
             }
         }

@@ -18,6 +18,11 @@ message SynchronizeResponse {
     uint64 latest_sequence = 1;
 }
 
+message ReplicateSet {
+    string leader_addr = 1;
+    Set set = 2;
+}
+
 enum Replication {
     SYNC = 0;
     ASYNC = 1;

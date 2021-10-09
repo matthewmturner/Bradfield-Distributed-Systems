@@ -21,7 +21,6 @@ pub struct WriteAheadLog<'a> {
 
 impl<'a> WriteAheadLog<'a> {
     pub fn new(path: &Path) -> io::Result<WriteAheadLog> {
-        // pub fn new(path: &'a PathBuf) -> io::Result<WriteAheadLog> {
         let magic = b"BLUE";
         let header = [WAL_VERSION, PROTO_BUF_VERSION];
         let sequence = 1u64.to_le_bytes();
@@ -37,7 +36,6 @@ impl<'a> WriteAheadLog<'a> {
         })
     }
     pub fn open(path: &Path) -> io::Result<WriteAheadLog> {
-        // pub fn open(path: &'a PathBuf) -> io::Result<WriteAheadLog> {
         let mut file = File::open(path)?;
         let mut magic = [0u8; 4];
         file.read_exact(&mut magic)?;
@@ -49,7 +47,6 @@ impl<'a> WriteAheadLog<'a> {
         match &magic == b"BLUE" {
             true => Ok(WriteAheadLog {
                 path,
-                // index: 6,
                 next_sequence: u64::from_le_bytes(sequence_bytes),
             }),
             false => Err(io::Error::new(
@@ -60,7 +57,6 @@ impl<'a> WriteAheadLog<'a> {
     }
     pub fn append_message<M: Message>(&mut self, message: &M) -> io::Result<()> {
         println!("Appending msg to wal: {:?}", message);
-        // let bytes = serialize_message_with_len(message)?;
         let bytes = message.encode_length_delimited_to_vec();
         let mut file = OpenOptions::new().append(true).open(self.path)?;
         file.write_all(&bytes)?;
