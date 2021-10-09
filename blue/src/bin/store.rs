@@ -16,8 +16,6 @@ use blue::store::deserialize::deserialize_store;
 use blue::store::handler::handle_stream;
 use blue::store::wal::WriteAheadLog;
 
-// TODO: Handle writing to STDOUT vs STDERR
-
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     let opt = args::Opt::from_args();
@@ -30,7 +28,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let wal_name = addr.to_string().replace(".", "").replace(":", "");
     let wal_full_name = format!("wal{}.log", wal_name);
-    // TODO: Can this be Path instead of PathBuf
     let wal_path = PathBuf::from(wal_full_name);
     let mut wal = match wal_path.exists() {
         true => {

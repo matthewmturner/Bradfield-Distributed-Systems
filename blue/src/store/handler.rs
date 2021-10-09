@@ -34,40 +34,40 @@ pub async fn handle_stream<'a>(
                 let mut wal = wal.lock().unwrap();
                 let mut cluster = cluster.lock().unwrap();
 
-                // TODO: Update single letters
                 match r.command {
-                    Some(Command::FollowRequest(c)) => {
-                        follow_request_handler(c, &mut cluster, &mut stream).await?;
+                    Some(Command::FollowRequest(follow)) => {
+                        follow_request_handler(follow, &mut cluster, &mut stream).await?;
                         println!("New cluster: {:?}", cluster);
                     }
-                    Some(Command::InitiateSession(c)) => {
-                        initiate_session_handler(&mut stream, c).await?
+                    Some(Command::InitiateSession(initiate_session)) => {
+                        initiate_session_handler(&mut stream, initiate_session).await?
                     }
-                    Some(Command::SynchronizeRequest(c)) => {
-                        synchronize_request_handler(&mut stream, c, &wal).await?
+                    Some(Command::SynchronizeRequest(synchronize_request)) => {
+                        synchronize_request_handler(&mut stream, synchronize_request, &wal).await?
                     }
-                    Some(Command::Get(c)) => get_handler(&mut stream, c, &mut store).await?,
-                    Some(Command::Set(c)) => match role {
+                    Some(Command::Get(get)) => get_handler(&mut stream, get, &mut store).await?,
+                    Some(Command::Set(set)) => match role {
                         NodeRole::Leader => {
-                            async_set_handler(&mut stream, &c, &mut store).await?;
+                            async_set_handler(&mut stream, &set, &mut store).await?;
                             persist_store(&mut store, &store_path)?;
                             println!("Appending sequence #{} to WAL", wal.next_sequence);
-                            wal.append_message(&c)?;
+                            wal.append_message(&set)?;
                             let r = message::Request {
-                                command: Some(Command::Set(c)),
+                                command: Some(Command::Set(set)),
                             };
                             Cluster::replicate(r, &cluster.sync_follower, &cluster.async_followers)
                                 .await?;
                             println!("Replicated set command");
                         }
                         NodeRole::Follower => {
+                            // TODO: New command for replication request with leader addr as param
                             let peer = stream.peer_addr()?;
                             println!("Replication request from {}", peer);
                             if peer == cluster.leader.addr {
-                                replication_handler(&c, &mut store).await?;
+                                replication_handler(&set, &mut store).await?;
                                 persist_store(&mut store, &store_path)?;
                                 println!("Appending sequence #{} to WAL", wal.next_sequence);
-                                wal.append_message(&c)?;
+                                wal.append_message(&set)?;
                             } else {
                                 let response = message::Response {
                                     success: false,
@@ -182,7 +182,7 @@ async fn async_set_handler(
     store.records.insert(set.key.clone(), set.value.clone());
     let msg = message::Response {
         success: true,
-        message: "Succesfully wrote key to in memory story".to_string(),
+        message: "Succesfully wrote key to in memory store".to_string(),
     };
     async_send_message(msg, stream).await?;
 
@@ -198,7 +198,7 @@ pub fn set_handler(
     store.records.insert(set.key.clone(), set.value.clone());
     let msg = message::Response {
         success: true,
-        message: "Succesfully wrote key to in memory story".to_string(),
+        message: "Succesfully wrote key to in memory store".to_string(),
     };
     send_message(msg, stream)?;
 
