@@ -2,6 +2,7 @@ use std::fs::{File, OpenOptions};
 use std::io::{self, ErrorKind, Read, Seek, SeekFrom, Write};
 use std::path::Path;
 
+use log::debug;
 use prost::Message;
 
 use super::super::ipc::message;
@@ -56,7 +57,7 @@ impl<'a> WriteAheadLog<'a> {
         }
     }
     pub fn append_message<M: Message>(&mut self, message: &M) -> io::Result<()> {
-        println!("Appending msg to wal: {:?}", message);
+        debug!("Appending msg to wal: {:?}", message);
         let bytes = message.encode_length_delimited_to_vec();
         let mut file = OpenOptions::new().append(true).open(self.path)?;
         file.write_all(&bytes)?;

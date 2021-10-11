@@ -1,6 +1,8 @@
 use std::io::{self, Write};
 use std::net::TcpStream;
 
+use log::debug;
+
 use prost::Message;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream as asyncTcpStream;
@@ -10,7 +12,7 @@ where
     M: Message,
 {
     let length = message.encoded_len() as i32;
-    println!(
+    debug!(
         "Sending message:\n\t{:?}\nOn Stream:\n\t{:?}",
         message, stream
     );
@@ -26,7 +28,7 @@ where
     M: Message,
 {
     let length = message.encoded_len() as i32;
-    println!("Sending message: {:?} \n\tOn Stream: {:?}", message, stream);
+    debug!("Sending message: {:?} \n\tOn Stream: {:?}", message, stream);
     let mut buf: Vec<u8> = Vec::with_capacity(length as usize);
     message.encode(&mut buf)?;
     stream.write_all(&length.to_le_bytes())?;

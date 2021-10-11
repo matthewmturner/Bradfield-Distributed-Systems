@@ -4,6 +4,7 @@ use std::path::Path;
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 
+use log::{debug, error, info};
 use serde_json::json;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream as asyncTcpStream;
@@ -25,9 +26,9 @@ pub async fn handle_stream<'a>(
     role: &NodeRole,
 ) -> io::Result<()> {
     loop {
-        println!("Handling stream: {:?}", stream);
+        info!("Handling stream: {:?}", stream);
         let input = async_read_message::<message::Request>(&mut stream).await;
-        println!("Input: {:?}", input);
+        debug!("Input: {:?}", input);
         match input {
             Ok(r) => {
                 let mut store = store.lock().unwrap();
@@ -37,7 +38,7 @@ pub async fn handle_stream<'a>(
                 match r.command {
                     Some(Command::FollowRequest(follow)) => {
                         follow_request_handler(follow, &mut cluster, &mut stream).await?;
-                        println!("New cluster: {:?}", cluster);
+                        debug!("New cluster: {:?}", cluster);
                     }
                     Some(Command::InitiateSession(initiate_session)) => {
                         initiate_session_handler(&mut stream, initiate_session).await?
@@ -50,23 +51,23 @@ pub async fn handle_stream<'a>(
                         NodeRole::Leader => {
                             async_set_handler(&mut stream, &set, &mut store).await?;
                             persist_store(&mut store, &store_path)?;
-                            println!("Appending sequence #{} to WAL", wal.next_sequence);
+                            debug!("Appending sequence #{} to WAL", wal.next_sequence);
                             wal.append_message(&set)?;
                             let r = message::Request {
                                 command: Some(Command::Set(set)),
                             };
                             Cluster::replicate(r, &cluster.sync_follower, &cluster.async_followers)
                                 .await?;
-                            println!("Replicated set command");
+                            info!("Replicated set command");
                         }
                         NodeRole::Follower => {
                             // TODO: New command for replication request with leader addr as param
                             let peer = stream.peer_addr()?;
-                            println!("Replication request from {}", peer);
+                            info!("Replication request from {}", peer);
                             if peer == cluster.leader.addr {
                                 replication_handler(&set, &mut store).await?;
                                 persist_store(&mut store, &store_path)?;
-                                println!("Appending sequence #{} to WAL", wal.next_sequence);
+                                debug!("Appending sequence #{} to WAL", wal.next_sequence);
                                 wal.append_message(&set)?;
                             } else {
                                 let response = message::Response {
@@ -79,11 +80,11 @@ pub async fn handle_stream<'a>(
                     },
                     // Some(Command::InitiateBackup(c)) => initiate_backup_handler(c, &mut store)?,
                     // Some(Command::ExecuteBackup(c)) => execute_backup_handler(c, &store_path)?,
-                    None => println!("Figure this out"),
+                    None => error!("Figure this out"),
                 }
             }
             Err(_) => {
-                println!("Unknown command");
+                error!("Unknown command");
                 return Ok(());
             }
         }
@@ -96,7 +97,7 @@ async fn follow_request_handler(
     stream: &mut asyncTcpStream,
 ) -> io::Result<()> {
     let follower_addr = SocketAddr::from_str(follow_request.follower_addr.as_str()).unwrap();
-    println!("Adding follower: {:?}", follower_addr);
+    info!("Adding follower: {:?}", follower_addr);
     cluster.add_follower(follower_addr, stream).await?;
     Ok(())
 }
@@ -105,7 +106,7 @@ async fn initiate_session_handler(
     stream: &mut asyncTcpStream,
     initiate_session: message::InitiateSession,
 ) -> io::Result<()> {
-    println!("Initiating session with {}", initiate_session.name);
+    info!("Initiating session with {}", initiate_session.name);
     let welcome = message::Welcome {
         message: "Welcome to Blue!\n".to_string(),
     };
@@ -117,7 +118,7 @@ async fn synchronize_request_handler<'a>(
     request_synchronize: message::SynchronizeRequest,
     wal: &WriteAheadLog<'a>,
 ) -> io::Result<()> {
-    println!(
+    info!(
         "Synchronization requested: {:?}\nFrom: {:?}",
         request_synchronize, stream
     );
@@ -128,19 +129,19 @@ async fn synchronize_request_handler<'a>(
     };
     async_send_message(synchronize_response, stream).await?;
     if seq_start == wal.next_sequence {
-        println!("Synchronization not required. Follower already up to date");
+        info!("Synchronization not required. Follower already up to date");
         return Ok(());
     }
     let messages = wal.messages()?;
-    println!("WAL Messages: {:?}", messages);
+    debug!("WAL Messages: {:?}", messages);
     for item in messages {
-        println!("Seq: {}", item.0);
+        debug!("Seq: {}", item.0);
         if item.0 >= seq_start {
             let seq_bytes = item.0.to_le_bytes();
             stream.write_all(&seq_bytes).await?;
             async_send_message(item.1.clone(), stream).await?
         };
-        println!("Synchronization complete");
+        info!("Synchronization complete");
     }
     Ok(())
 }
@@ -150,7 +151,7 @@ async fn get_handler(
     get: message::Get,
     store: &mut message::Store,
 ) -> io::Result<()> {
-    println!("Getting key={}", get.key);
+    info!("Getting key={}", get.key);
     let m = if get.key.is_empty() {
         message::Response {
             success: false,
@@ -178,7 +179,7 @@ async fn async_set_handler(
     set: &message::Set,
     store: &mut message::Store,
 ) -> io::Result<()> {
-    println!("Storing {}={}", set.key, set.value);
+    info!("Storing {}={}", set.key, set.value);
     store.records.insert(set.key.clone(), set.value.clone());
     let msg = message::Response {
         success: true,
@@ -194,7 +195,7 @@ pub fn set_handler(
     set: &message::Set,
     store: &mut message::Store,
 ) -> io::Result<()> {
-    println!("Storing {}={}", set.key, set.value);
+    info!("Storing {}={}", set.key, set.value);
     store.records.insert(set.key.clone(), set.value.clone());
     let msg = message::Response {
         success: true,
@@ -211,7 +212,7 @@ async fn replication_handler(
     store: &mut message::Store,
 ) -> io::Result<()> {
     // TODO: Send message back to leader to remove from WAL
-    println!("Replication storing {}={}", set.key, set.value);
+    info!("Replication storing {}={}", set.key, set.value);
     store.records.insert(set.key.clone(), set.value.clone());
     Ok(())
 }
@@ -223,7 +224,7 @@ pub fn synchronize_handler(
 ) -> io::Result<()> {
     // TODO: Send message back to leader to remove from WAL
     store.records.insert(set.key.clone(), set.value.clone());
-    println!("Synchronized {}={}", set.key, set.value);
+    info!("Synchronized {}={}", set.key, set.value);
     Ok(())
 }
 
