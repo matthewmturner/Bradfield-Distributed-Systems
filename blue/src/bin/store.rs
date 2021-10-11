@@ -46,7 +46,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
     };
     debug!("WAL: {:?}", wal);
 
-    let store_pth = format!("{}.pb", addr);
+    let store_name = addr.to_string().replace(".", "").replace(":", "");
+    let store_pth = format!("{}.pb", store_name);
     let store_path = Path::new(&store_pth);
     let mut store = match store_path.exists() {
         true => deserialize_store(store_path)?,
