@@ -18,17 +18,17 @@ Blue was created as the core project for the Bradfield Distributed Systems cours
 - Transport Layer Protocol is TCP
 - Serialization format for both client / server and on disk storage is Protocol Buffers
 - On disk storage
-  - The entire store is rewritten to disk after each `set`
+  - The entire store is rewritten to disk after each `set`. _An improvement for this is in development_
   - A Write-Ahead-Log is updated after each `set` command to enable more efficient backup / synchronization
 - Write-Ahead-Log
-  - Naming convention: "wal{$IP Address and Port}.log
+  - WAL file naming convention: "wal{$IP Address and Port}.log
   - Format:
     - Header
       1. 4 magic bytes "BLUE"
       2. 1 byte for which version of the WAL this is
       3. 1 byte for which version of Protocol Buffers is used
     - Data
-      1. 8 byte little endian sequence number
+      1. 8 byte little endian unsigned sequence number
       2. 4 byte Protocol Buffers message length
       3. Protocol buffers message
 - Replication is semi-synchronous
