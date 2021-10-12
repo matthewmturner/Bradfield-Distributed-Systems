@@ -78,6 +78,7 @@ pub async fn handle_stream<'a>(
                             }
                         }
                     },
+                    Some(Command::ReplicateSet(replicate_set)) => {}
                     // Some(Command::InitiateBackup(c)) => initiate_backup_handler(c, &mut store)?,
                     // Some(Command::ExecuteBackup(c)) => execute_backup_handler(c, &store_path)?,
                     None => error!("Figure this out"),

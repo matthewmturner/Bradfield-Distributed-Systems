@@ -176,6 +176,12 @@ impl Cluster {
     where
         M: Message + Clone,
     {
+        // match message.command {
+        //     Some(Command::Set(set)) => {
+        //         let msg = message::Request { command: Some(set) };
+        //     }
+        // };
+
         if let Some(node) = sync_follower {
             Cluster::send_to_follower(node, message.clone())?;
         }
