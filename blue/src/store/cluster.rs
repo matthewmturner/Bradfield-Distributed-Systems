@@ -2,7 +2,7 @@ use std::io::{self, ErrorKind, Read};
 use std::net::{SocketAddr, TcpStream};
 use std::str::FromStr;
 
-use log::{debug, error, info};
+use log::{error, info};
 use prost::Message;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream as asyncTcpStream;
@@ -53,7 +53,7 @@ impl Cluster {
         addr: SocketAddr,
         role: &NodeRole,
         leader: SocketAddr,
-        wal: &mut WriteAheadLog<'a>,
+        wal: &mut WriteAheadLog,
         store: &mut message::Store,
     ) -> io::Result<Cluster> {
         match role {
@@ -176,12 +176,6 @@ impl Cluster {
     where
         M: Message + Clone,
     {
-        // match message.command {
-        //     Some(Command::Set(set)) => {
-        //         let msg = message::Request { command: Some(set) };
-        //     }
-        // };
-
         if let Some(node) = sync_follower {
             Cluster::send_to_follower(node, message.clone())?;
         }
@@ -223,7 +217,6 @@ impl Cluster {
         send_message(sync_request, &mut stream)?;
         let synchronize_response = read_message::<message::SynchronizeResponse>(&mut stream)?;
         let latest_sequence = synchronize_response.latest_sequence;
-        debug!("Latest leader sequence: {}", latest_sequence);
         if latest_sequence == wal.next_sequence - 1 {
             info!("Already synchronized with leader");
             return Ok(());

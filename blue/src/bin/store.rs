@@ -1,13 +1,13 @@
 use std::error::Error;
 use std::net::SocketAddr;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::str::FromStr;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
-use env_logger;
 use log::{debug, info};
 use structopt::StructOpt;
 use tokio::net::TcpListener;
+use tokio::sync::Mutex;
 
 extern crate blue;
 
@@ -48,15 +48,16 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let store_name = addr.to_string().replace(".", "").replace(":", "");
     let store_pth = format!("{}.pb", store_name);
-    let store_path = Path::new(&store_pth);
+    let store_path = PathBuf::from(store_pth);
     let mut store = match store_path.exists() {
-        true => deserialize_store(store_path)?,
+        true => deserialize_store(&store_path)?,
         false => message::Store::default(),
     };
-    // let mut store = deserialize_store(store_path)?;
 
     let listener = TcpListener::bind(addr).await?;
     let cluster = Cluster::new(addr, &role, leader_addr, &mut wal, &mut store).await?;
+
+    let role = Arc::new(role);
 
     let store_path = Arc::new(store_path);
     let store = Arc::new(Mutex::new(store));
@@ -68,10 +69,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
     loop {
         let (stream, addr) = listener.accept().await?;
         info!("Incoming request from {}", addr);
+        let role = Arc::clone(&role);
         let store = Arc::clone(&store);
         let store_path = Arc::clone(&store_path);
         let wal = Arc::clone(&wal);
         let cluster = Arc::clone(&cluster);
-        handle_stream(stream, store, store_path, wal, cluster, &role).await?;
+        tokio::spawn(
+            async move { handle_stream(stream, store, store_path, wal, cluster, role).await },
+        );
     }
 }

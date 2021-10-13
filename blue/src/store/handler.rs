@@ -1,13 +1,14 @@
 use std::io;
 use std::net::{SocketAddr, TcpStream};
-use std::path::Path;
+use std::path::PathBuf;
 use std::str::FromStr;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use log::{debug, error, info};
 use serde_json::json;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream as asyncTcpStream;
+use tokio::sync::Mutex;
 
 use super::super::ipc::message;
 use super::super::ipc::message::request::Command;
@@ -17,13 +18,14 @@ use super::cluster::{Cluster, NodeRole};
 use super::serialize::persist_store;
 use super::wal::WriteAheadLog;
 
+// TODO: Why isnt async working? I.e. connecting servers after client is connected stays on client stream.
 pub async fn handle_stream<'a>(
     mut stream: asyncTcpStream,
     store: Arc<Mutex<message::Store>>,
-    store_path: Arc<&Path>,
-    wal: Arc<Mutex<WriteAheadLog<'a>>>,
+    store_path: Arc<PathBuf>,
+    wal: Arc<Mutex<WriteAheadLog>>,
     cluster: Arc<Mutex<Cluster>>,
-    role: &NodeRole,
+    role: Arc<NodeRole>,
 ) -> io::Result<()> {
     loop {
         info!("Handling stream: {:?}", stream);
@@ -31,9 +33,9 @@ pub async fn handle_stream<'a>(
         debug!("Input: {:?}", input);
         match input {
             Ok(r) => {
-                let mut store = store.lock().unwrap();
-                let mut wal = wal.lock().unwrap();
-                let mut cluster = cluster.lock().unwrap();
+                let mut store = store.lock().await;
+                let mut wal = wal.lock().await;
+                let mut cluster = cluster.lock().await;
 
                 match r.command {
                     Some(Command::FollowRequest(follow)) => {
@@ -47,7 +49,7 @@ pub async fn handle_stream<'a>(
                         synchronize_request_handler(&mut stream, synchronize_request, &wal).await?
                     }
                     Some(Command::Get(get)) => get_handler(&mut stream, get, &mut store).await?,
-                    Some(Command::Set(set)) => match role {
+                    Some(Command::Set(set)) => match *role {
                         NodeRole::Leader => {
                             async_set_handler(&mut stream, &set, &mut store).await?;
                             persist_store(&mut store, &store_path)?;
@@ -78,7 +80,19 @@ pub async fn handle_stream<'a>(
                             }
                         }
                     },
-                    Some(Command::ReplicateSet(replicate_set)) => {}
+                    Some(Command::ReplicateSet(replicate_set)) => {
+                        let peer = stream.peer_addr()?;
+                        info!("Replication request from {}", peer);
+                        if peer == cluster.leader.addr {
+                            error!("Leader does not accept replication requests");
+                        } else {
+                            let response = message::Response {
+                                success: false,
+                                message: "Only the leader accepts writes".to_string(),
+                            };
+                            async_send_message(response, &mut stream).await?;
+                        }
+                    }
                     // Some(Command::InitiateBackup(c)) => initiate_backup_handler(c, &mut store)?,
                     // Some(Command::ExecuteBackup(c)) => execute_backup_handler(c, &store_path)?,
                     None => error!("Figure this out"),
@@ -117,7 +131,7 @@ async fn initiate_session_handler(
 async fn synchronize_request_handler<'a>(
     stream: &mut asyncTcpStream,
     request_synchronize: message::SynchronizeRequest,
-    wal: &WriteAheadLog<'a>,
+    wal: &WriteAheadLog,
 ) -> io::Result<()> {
     info!(
         "Synchronization requested: {:?}\nFrom: {:?}",
@@ -133,7 +147,7 @@ async fn synchronize_request_handler<'a>(
         info!("Synchronization not required. Follower already up to date");
         return Ok(());
     }
-    let messages = wal.messages()?;
+    let messages = wal.clone().messages()?;
     debug!("WAL Messages: {:?}", messages);
     for item in messages {
         debug!("Seq: {}", item.0);
