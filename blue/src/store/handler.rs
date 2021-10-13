@@ -18,7 +18,6 @@ use super::cluster::{Cluster, NodeRole};
 use super::serialize::persist_store;
 use super::wal::WriteAheadLog;
 
-// TODO: Why isnt async working? I.e. connecting servers after client is connected stays on client stream.
 pub async fn handle_stream<'a>(
     mut stream: asyncTcpStream,
     store: Arc<Mutex<message::Store>>,
@@ -56,28 +55,37 @@ pub async fn handle_stream<'a>(
                             debug!("Appending sequence #{} to WAL", wal.next_sequence);
                             wal.append_message(&set)?;
                             let r = message::Request {
-                                command: Some(Command::Set(set)),
+                                command: Some(Command::ReplicateSet(message::ReplicateSet {
+                                    set: Some(set),
+                                })),
                             };
                             Cluster::replicate(r, &cluster.sync_follower, &cluster.async_followers)
                                 .await?;
                             info!("Replicated set command");
                         }
                         NodeRole::Follower => {
+                            let response = message::Response {
+                                success: false,
+                                message: "Only the leader accepts writes".to_string(),
+                            };
+                            async_send_message(response, &mut stream).await?;
+                            error!("Only the leader accepts writes");
+
                             // TODO: New command for replication request with leader addr as param
-                            let peer = stream.peer_addr()?;
-                            info!("Replication request from {}", peer);
-                            if peer == cluster.leader.addr {
-                                replication_handler(&set, &mut store).await?;
-                                persist_store(&mut store, &store_path)?;
-                                debug!("Appending sequence #{} to WAL", wal.next_sequence);
-                                wal.append_message(&set)?;
-                            } else {
-                                let response = message::Response {
-                                    success: false,
-                                    message: "Only the leader accepts writes".to_string(),
-                                };
-                                async_send_message(response, &mut stream).await?;
-                            }
+                            // let peer = stream.peer_addr()?;
+                            // info!("Replication request from {}", peer);
+                            // if peer == cluster.leader.addr {
+                            //     replication_handler(&set, &mut store).await?;
+                            //     persist_store(&mut store, &store_path)?;
+                            //     debug!("Appending sequence #{} to WAL", wal.next_sequence);
+                            //     wal.append_message(&set)?;
+                            // } else {
+                            //     let response = message::Response {
+                            //         success: false,
+                            //         message: "Only the leader accepts writes".to_string(),
+                            //     };
+                            //     async_send_message(response, &mut stream).await?;
+                            // }
                         }
                     },
                     Some(Command::ReplicateSet(replicate_set)) => {
@@ -86,11 +94,9 @@ pub async fn handle_stream<'a>(
                         if peer == cluster.leader.addr {
                             error!("Leader does not accept replication requests");
                         } else {
-                            let response = message::Response {
-                                success: false,
-                                message: "Only the leader accepts writes".to_string(),
-                            };
-                            async_send_message(response, &mut stream).await?;
+                            replicate_set_handler(&replicate_set, &mut store)?;
+                            persist_store(&mut store, &store_path)?;
+                            wal.append_message(&replicate_set)?;
                         }
                     }
                     // Some(Command::InitiateBackup(c)) => initiate_backup_handler(c, &mut store)?,
@@ -150,10 +156,10 @@ async fn synchronize_request_handler<'a>(
     let messages = wal.clone().messages()?;
     debug!("WAL Messages: {:?}", messages);
     for item in messages {
-        debug!("Seq: {}", item.0);
         if item.0 >= seq_start {
             let seq_bytes = item.0.to_le_bytes();
             stream.write_all(&seq_bytes).await?;
+            debug!("Sending sequence: {}", item.0);
             async_send_message(item.1.clone(), stream).await?
         };
         info!("Synchronization complete");
@@ -221,6 +227,24 @@ pub fn set_handler(
     Ok(())
 }
 
+pub fn replicate_set_handler(
+    // stream: &mut TcpStream,
+    replicate_set: &message::ReplicateSet,
+    store: &mut message::Store,
+) -> io::Result<()> {
+    if let Some(set) = replicate_set.clone().set {
+        info!("Storing {}={}", set.key, set.value);
+        store.records.insert(set.key, set.value);
+    }
+    // let msg = message::Response {
+    //     success: true,
+    //     message: "Succesfully wrote key to in memory store".to_string(),
+    // };
+    // send_message(msg, stream)?;
+
+    Ok(())
+}
+
 async fn replication_handler(
     // stream: &mut asyncTcpStream,
     set: &message::Set,
@@ -239,7 +263,7 @@ pub fn synchronize_handler(
 ) -> io::Result<()> {
     // TODO: Send message back to leader to remove from WAL
     store.records.insert(set.key.clone(), set.value.clone());
-    info!("Synchronized {}={}", set.key, set.value);
+    info!("Synchronized {}={} from leader", set.key, set.value);
     Ok(())
 }
 

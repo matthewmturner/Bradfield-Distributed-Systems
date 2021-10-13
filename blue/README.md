@@ -13,8 +13,8 @@ Blue was created as the core project for the Bradfield Distributed Systems cours
   - Only the leader accepts writes
 - Accepted commands
   - `set`: Set a single key value pair. e.g. `set name=matt`
-  - `get`: Get the value for a single key e.g. `get matt`
-  - `delete`: Delete the value for a single key e.g. `delete matt` _In development_
+  - `get`: Get the value for a single key e.g. `get name`
+  - `delete`: Delete the value for a single key e.g. `delete name` _In development_
 - Transport Layer Protocol is TCP
 - Serialization format for both client / server and on disk storage is Protocol Buffers
 - On disk storage

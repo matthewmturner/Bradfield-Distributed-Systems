@@ -8,6 +8,7 @@ use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream as asyncTcpStream;
 
 use crate::ipc::receiver::{async_read_message, read_message};
+use crate::store::serialize::persist_store;
 
 use super::super::ipc::message;
 use super::super::ipc::message::request::Command;
@@ -228,6 +229,7 @@ impl Cluster {
             let set = read_message::<message::Set>(&mut stream)?;
             synchronize_handler(&set, store)?;
             wal.append_message(&set)?;
+            // TODO: Persist store
             if sequence == latest_sequence {
                 break;
             }

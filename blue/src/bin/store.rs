@@ -46,6 +46,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     };
     debug!("WAL: {:?}", wal);
 
+    //  TODO: Is store protobuf message needed anymore?
     let store_name = addr.to_string().replace(".", "").replace(":", "");
     let store_pth = format!("{}.pb", store_name);
     let store_path = PathBuf::from(store_pth);
