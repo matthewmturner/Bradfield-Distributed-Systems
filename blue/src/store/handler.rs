@@ -29,7 +29,6 @@ pub async fn handle_stream<'a>(
     loop {
         info!("Handling stream: {:?}", stream);
         let input = async_read_message::<message::Request>(&mut stream).await;
-        debug!("Input: {:?}", input);
         match input {
             Ok(r) => {
                 let mut store = store.lock().await;
@@ -52,11 +51,14 @@ pub async fn handle_stream<'a>(
                         NodeRole::Leader => {
                             async_set_handler(&mut stream, &set, &mut store).await?;
                             persist_store(&mut store, &store_path)?;
-                            debug!("Appending sequence #{} to WAL", wal.next_sequence);
+                            let sequence = wal.next_sequence;
+                            debug!("Appending sequence #{} to WAL", sequence);
                             wal.append_message(&set)?;
                             let r = message::Request {
                                 command: Some(Command::ReplicateSet(message::ReplicateSet {
+                                    leader_addr: cluster.leader.addr.to_string(),
                                     set: Some(set),
+                                    sequence,
                                 })),
                             };
                             Cluster::replicate(r, &cluster.sync_follower, &cluster.async_followers)
@@ -70,22 +72,6 @@ pub async fn handle_stream<'a>(
                             };
                             async_send_message(response, &mut stream).await?;
                             error!("Only the leader accepts writes");
-
-                            // TODO: New command for replication request with leader addr as param
-                            // let peer = stream.peer_addr()?;
-                            // info!("Replication request from {}", peer);
-                            // if peer == cluster.leader.addr {
-                            //     replication_handler(&set, &mut store).await?;
-                            //     persist_store(&mut store, &store_path)?;
-                            //     debug!("Appending sequence #{} to WAL", wal.next_sequence);
-                            //     wal.append_message(&set)?;
-                            // } else {
-                            //     let response = message::Response {
-                            //         success: false,
-                            //         message: "Only the leader accepts writes".to_string(),
-                            //     };
-                            //     async_send_message(response, &mut stream).await?;
-                            // }
                         }
                     },
                     Some(Command::ReplicateSet(replicate_set)) => {
@@ -99,8 +85,9 @@ pub async fn handle_stream<'a>(
                             wal.append_message(&replicate_set)?;
                         }
                     }
-                    // Some(Command::InitiateBackup(c)) => initiate_backup_handler(c, &mut store)?,
-                    // Some(Command::ExecuteBackup(c)) => execute_backup_handler(c, &store_path)?,
+                    Some(Command::ReplicateResponse(replicate_response)) => {
+                        println!("{:?}", replicate_response)
+                    }
                     None => error!("Figure this out"),
                 }
             }
@@ -228,7 +215,6 @@ pub fn set_handler(
 }
 
 pub fn replicate_set_handler(
-    // stream: &mut TcpStream,
     replicate_set: &message::ReplicateSet,
     store: &mut message::Store,
 ) -> io::Result<()> {
@@ -236,23 +222,16 @@ pub fn replicate_set_handler(
         info!("Storing {}={}", set.key, set.value);
         store.records.insert(set.key, set.value);
     }
-    // let msg = message::Response {
-    //     success: true,
-    //     message: "Succesfully wrote key to in memory store".to_string(),
-    // };
-    // send_message(msg, stream)?;
 
-    Ok(())
-}
+    let mut stream = TcpStream::connect(&replicate_set.leader_addr)?;
+    let msg = message::Request {
+        command: Some(Command::ReplicateResponse(message::ReplicateResponse {
+            success: true,
+            sequence: replicate_set.sequence,
+        })),
+    };
+    send_message(msg, &mut stream)?;
 
-async fn replication_handler(
-    // stream: &mut asyncTcpStream,
-    set: &message::Set,
-    store: &mut message::Store,
-) -> io::Result<()> {
-    // TODO: Send message back to leader to remove from WAL
-    info!("Replication storing {}={}", set.key, set.value);
-    store.records.insert(set.key.clone(), set.value.clone());
     Ok(())
 }
 
@@ -266,33 +245,3 @@ pub fn synchronize_handler(
     info!("Synchronized {}={} from leader", set.key, set.value);
     Ok(())
 }
-
-// async fn sync_request_handler(own_sequence: u64, cluster: Cluster) {
-//     println!("Requesting sync from sequence #{}", own_sequence);
-//     let leader = cluster.leader.addr;
-//     let stream = TcpStream::connect(leader).await?;
-// }
-
-// async fn sync_response_handler(requested_sequence: u64, cluster: Cluster) {
-//     println!("Sending sync from sequence #{}", requested_sequence);
-//     let stream = TcpStream::connect(leader).await?;
-// }
-
-// fn initiate_backup_handler(
-//     backup: message::InitiateBackup,
-//     store: &mut message::Store,
-// ) -> io::Result<()> {
-//     println!("Backing up database to {}", backup.addr);
-//     let mut backup_stream = TcpStream::connect(backup.addr)?;
-//     // TODO: Can this be sent without cloning??
-//     async_send_message(store.clone(), &mut backup_stream)?;
-//     Ok(())
-// }
-
-// fn execute_backup_handler(backup: message::ExecuteBackup, path: &Path) -> io::Result<()> {
-//     println!("Storing backup database");
-//     if let Some(mut store) = backup.store {
-//         persist_store(&mut store, &path);
-//     }
-//     Ok(())
-// }

@@ -1,5 +1,6 @@
 use std::io::{self, ErrorKind, Read};
 use std::net::{SocketAddr, TcpStream};
+use std::path::Path;
 use std::str::FromStr;
 
 use log::{error, info};
@@ -56,6 +57,7 @@ impl Cluster {
         leader: SocketAddr,
         wal: &mut WriteAheadLog,
         store: &mut message::Store,
+        store_path: &Path,
     ) -> io::Result<Cluster> {
         match role {
             NodeRole::Leader => {
@@ -116,7 +118,7 @@ impl Cluster {
                         "Invalid Cluster config",
                     )),
                 };
-                Cluster::synchronize(leader, wal, store)?;
+                Cluster::synchronize(leader, wal, store, store_path)?;
                 cluster
             }
         }
@@ -207,6 +209,7 @@ impl Cluster {
         leader: SocketAddr,
         wal: &mut WriteAheadLog,
         store: &mut message::Store,
+        store_path: &Path,
     ) -> io::Result<()> {
         info!("Synchronizing to leader");
         let mut stream = TcpStream::connect(leader)?;
@@ -229,7 +232,7 @@ impl Cluster {
             let set = read_message::<message::Set>(&mut stream)?;
             synchronize_handler(&set, store)?;
             wal.append_message(&set)?;
-            // TODO: Persist store
+            persist_store(store, store_path)?;
             if sequence == latest_sequence {
                 break;
             }

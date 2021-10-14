@@ -19,8 +19,9 @@ message SynchronizeResponse {
 }
 
 message ReplicateSet {
-    // string leader_addr = 1;
-    Set set = 1;
+    string leader_addr = 1;
+    uint64 sequence = 2;
+    Set set = 3;
 }
 
 enum Replication {
@@ -68,6 +69,7 @@ message Request {
         ReplicateSet replicate_set = 4;
         FollowRequest follow_request = 5;
         SynchronizeRequest synchronize_request = 6;
+        ReplicateResponse replicate_response = 7;
         // InitiateBackup initiate_backup = 3;
         // ExecuteBackup execute_backup = 4;
     }
@@ -76,4 +78,9 @@ message Request {
 message Response {
     bool success = 1;
     string message = 2;
+}
+
+message ReplicateResponse {
+    bool success = 1;
+    uint64 sequence = 2;
 }

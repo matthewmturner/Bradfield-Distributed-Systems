@@ -46,17 +46,17 @@ async fn main() -> Result<(), Box<dyn Error>> {
     };
     debug!("WAL: {:?}", wal);
 
-    //  TODO: Is store protobuf message needed anymore?
     let store_name = addr.to_string().replace(".", "").replace(":", "");
     let store_pth = format!("{}.pb", store_name);
     let store_path = PathBuf::from(store_pth);
+    // Store is wrapped in Protobuf Message so that it can be serialized to disk
     let mut store = match store_path.exists() {
         true => deserialize_store(&store_path)?,
         false => message::Store::default(),
     };
 
     let listener = TcpListener::bind(addr).await?;
-    let cluster = Cluster::new(addr, &role, leader_addr, &mut wal, &mut store).await?;
+    let cluster = Cluster::new(addr, &role, leader_addr, &mut wal, &mut store, &store_path).await?;
 
     let role = Arc::new(role);
 
